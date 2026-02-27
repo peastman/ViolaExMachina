@@ -41,7 +41,8 @@ pub struct Instrument {
     period_offset: f32,
     random: Random,
     decaying_notes: Vec<DecayingNote>,
-    start_new_note: bool
+    start_new_note: bool,
+    last_note: i32
 }
 
 impl Instrument {
@@ -64,13 +65,22 @@ impl Instrument {
             period_offset: 0.0,
             random: random,
             decaying_notes: vec![],
-            start_new_note: false
+            start_new_note: false,
+            last_note: 0
         }
     }
 
     /// Signal the start of a new note.
-    pub fn note_on(&mut self) {
-        self.start_new_note = true;
+    pub fn note_on(&mut self, note: i32) {
+        if note != self.last_note {
+            self.start_new_note = true;
+            self.last_note = note;
+        }
+    }
+
+    /// Get the volume of the excitation from the bow (between 0.0 and 1.0).
+    pub fn get_volume(&self) -> f32 {
+        self.volume
     }
 
     /// Set the volume of the excitation from the bow (between 0.0 and 1.0).
@@ -112,10 +122,10 @@ impl Instrument {
     fn add_bow_excitation(&mut self) {
         let c = self.volume/(self.spectrum_size as f32).sqrt();
         for i in 1..self.spectrum_size {
-            let scale = c*(1.0-i as f32/self.spectrum_size as f32).powi(15);
-            let phase = 1.6*PI*self.random.get_uniform();
-            self.spectrum_buffer[i] += Complex::<f32>::new(scale*phase.cos(), scale*phase.sin());
-//            self.spectrum_buffer[i] += Complex::<f32>::new(scale*(self.random.get_uniform()-0.5), scale*(self.random.get_uniform()-0.5));
+           let scale = c*(1.0-(i as f32-3.0).abs()/self.spectrum_size as f32).powi(20);
+           let c1 = self.random.get_uniform();
+           let c2 = self.random.get_uniform();
+           self.spectrum_buffer[i] += Complex::<f32>::new(scale*(1.0-c1*c1), scale*(1.0-c2*c2));
         }
     }
 
@@ -123,7 +133,7 @@ impl Instrument {
     fn apply_filter(&mut self) {
         for i in 1..self.spectrum_size {
             let f = i as f32/self.spectrum_size as f32;
-            let scale = 0.93+0.05*(-5.0*f).exp();
+            let scale = 1.0-(0.07-0.06*(-8.0*f).exp())*(self.spectrum_size as f32).sqrt()*0.1;
             self.spectrum_buffer[i] *= scale;
         }
     }
@@ -136,7 +146,9 @@ impl Instrument {
                 // We're at the start of a new note.  Move the tail of the previous note into
                 // a separate object where it will be unaffected by further changes.
 
-                self.decaying_notes.push(DecayingNote::new(&self.spectrum_buffer[..self.spectrum_size], self.output_size));
+                if self.spectrum_size > 0 {
+                    self.decaying_notes.push(DecayingNote::new(&self.spectrum_buffer[..self.spectrum_size], self.output_size));
+                }
                 for i in 1..self.spectrum_size {
                     self.spectrum_buffer[i] = Complex::<f32>::new(0.0, 0.0);
                 }
@@ -229,7 +241,7 @@ impl DecayingNote {
         let spectrum_size = self.spectrum_buffer.len();
         for i in 1..spectrum_size {
             let f = i as f32/spectrum_size as f32;
-            let scale = 0.93+0.05*(-5.0*f).exp();
+            let scale = 1.0-(0.07-0.06*(-8.0*f).exp())*(spectrum_size as f32).sqrt()*0.1;
             self.spectrum_buffer[i] *= scale;
         }
     }
@@ -270,7 +282,6 @@ fn transform_spectrum(fft: &Arc<dyn ComplexToReal<f32>>, spectrum_buffer: &[Comp
     if output_buffer.len()%2 == 0 {
         spectrum_temp[spectrum_temp.len()-1].im = 0.0;
     }
-    fft.get_scratch_len();
     match fft.process_with_scratch(spectrum_temp, output_buffer, scratch) {
         Ok(_) => {}
         Err(message) => {println!["{}", message]}

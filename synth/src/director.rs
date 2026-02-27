@@ -63,8 +63,7 @@ struct Note {
 }
 
 /// This is the main class you interact with when synthesizing audio.  A Director controls a set
-/// of Instruments, all of the same type, that play in unison.  It handles all details of
-/// pronunciation and expression to make them sing the requested notes and syllables.
+/// of Instruments, all of the same type, that play in unison.
 ///
 /// When creating a Director with new(), you provide a Receiver<Message> that has been created
 /// with mpsc::channel().  You control it by sending messages from the corresponding Sender.
@@ -78,6 +77,7 @@ pub struct Director {
     random: Random,
     fft_planner: RealFftPlanner::<f32>,
     step: i64,
+    steps_until_off: i32,
     transitions: Vec<Transition>,
     current_note: Option<Note>,
     max_instrument_delay: i64,
@@ -113,6 +113,7 @@ impl Director {
             random: Random::new(),
             fft_planner: fft_planner,
             step: 0,
+            steps_until_off: 0,
             transitions: vec![],
             current_note: None,
             max_instrument_delay: 2000,
@@ -198,7 +199,7 @@ impl Director {
         self.update_instrument_delays();
     }
 
-    /// Start singing a new note.
+    /// Start playing a new note.
     fn note_on(&mut self, note_index: i32, velocity: f32) -> Result<(), String> {
         if note_index < self.lowest_note || note_index > self.highest_note {
             // The note index is outside the range of this instrument.  Ignore it.
@@ -209,75 +210,10 @@ impl Director {
             self.frequency[i] = 440.0 * f32::powf(2.0, (note_index-69) as f32/12.0);
         }
         self.update_frequency();
-
         let attack_time = 1000+(20000.0*(1.0-self.attack_rate)) as i64;
         self.add_envelope_transition(attack_time, 1.0);
-
-
-/*        // If the note index is outside the range of this instrument, just stop the current
-        // note and exit.
-
-        if note_index < self.lowest_note || note_index > self.highest_note {
-            if self.current_note.is_some() {
-                self.note_off(false, false);
-            }
-            return Ok(());
-        }
-
-        // Prepare for playing the note.
-
-        let num_transitions = self.transitions.len();
-        let has_current_note = self.current_note.is_some();
-        let frequency = 440.0 * f32::powf(2.0, (note_index-69) as f32/12.0);
-        let mut delay = 0;
-        for transition in &self.transitions {
-            delay = i64::max(delay, transition.end-self.step);
-        }
-        let mut envelope_offset = 0;
-        if let Some(note) = &self.current_note {
-            let current_note_index = note.note_index;
-
-            // Smoothly transition between the two notes.  The time and envelope shape depend both on how
-            // large a jump we're making and on what vowel we're heading toward.
-
-            let transition_time = 0;//(500 + 20*(current_note_index-note_index).abs()) as i64;
-            self.add_transition(delay, transition_time, TransitionData::FrequencyChange {start_frequency: self.frequency_after_transitions, end_frequency: frequency});
-            let min_envelope = self.envelope_after_transitions*f32::max(0.5, 1.0-0.05*((current_note_index-note_index).abs() as f32));
-            let final_envelope = 1.0;
-            self.add_transition(delay, transition_time/2, TransitionData::EnvelopeChange {start_envelope: self.envelope_after_transitions, end_envelope: min_envelope});
-            self.add_transition(delay+transition_time/2, transition_time/2, TransitionData::EnvelopeChange {start_envelope: min_envelope, end_envelope: final_envelope});
-            delay += transition_time;
-        }
-        else {
-            // Set the frequency of the new note.
-
-            self.add_transition(delay, 1000, TransitionData::FrequencyChange {start_frequency: frequency, end_frequency: frequency});
-        }
-        let attack_time = 0;//1000+(10000.0*(1.0-self.attack_rate)) as i64;
-
-        // Adjust the envelope for the new note.  If accent is enabled, overshoot it then come back down.
-
-        let max_amplitude = if self.accent {1.0+2.5*velocity} else {1.0};
-        self.add_transition(delay-envelope_offset, attack_time, TransitionData::EnvelopeChange {
-            start_envelope: self.envelope_after_transitions,
-            end_envelope: max_amplitude
-        });
-        if self.accent {
-            self.add_transition(delay-envelope_offset+attack_time, 4000, TransitionData::EnvelopeChange {
-                start_envelope: max_amplitude,
-                end_envelope: 1.0
-            });
-        }
-
-        // Record the note we're now playing.
-
-        let note = Note {
-            note_index: note_index
-        };
-        self.current_note = Some(note);
-        self.update_sound();*/
         for instrument in &mut self.instruments {
-            instrument.note_on();
+            instrument.note_on(note_index);
         }
         Ok(())
     }
@@ -321,17 +257,25 @@ impl Director {
         }
         self.step += 1;
 
+        // If nothing has been played for a while, we can return without doing anything.
+
+        if self.instruments[0].get_volume() > 0.0 {
+            self.steps_until_off = 10000;
+        }
+        if self.steps_until_off == 0 {
+            return (0.0, 0.0);
+        }
+        self.steps_until_off -= 1;
+
+        // Loop over Instruments and generate audio for each one.
+
         let mut left = 0.0;
         let mut right = 0.0;
-        // if self.step < self.off_after_step {
-            // Loop over Instruments and generate audio for each one.
-
-            for i in 0..self.instruments.len() {
-                let signal = self.instruments[i].generate(self.step, &mut self.fft_planner);
-                left += self.instrument_pan[i].cos()*signal;
-                right += self.instrument_pan[i].sin()*signal;
-            }
-        // }
+        for i in 0..self.instruments.len() {
+            let signal = self.instruments[i].generate(self.step, &mut self.fft_planner);
+            left += self.instrument_pan[i].cos()*signal;
+            right += self.instrument_pan[i].sin()*signal;
+        }
         left += self.body_resonance*self.reverb[0].process(left);
         if self.reverb.len() == 1 {
             right = left;
@@ -339,7 +283,11 @@ impl Director {
         else {
             right += self.body_resonance*self.reverb[1].process(right);
         }
-        (0.01*left, 0.01*right)
+        if self.steps_until_off < 100 && (left.abs() > 0.001 || right.abs() > 0.001) {
+            self.steps_until_off = 100;
+        }
+        let scale = 0.01/(self.instruments.len() as f32).sqrt();
+        (scale*left, scale*right)
     }
 
     /// This is called occasionally by generate().  It processes any Messages that have been
