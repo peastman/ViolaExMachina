@@ -17,6 +17,7 @@ pub mod instrument;
 pub mod director;
 pub mod random;
 pub mod resampler;
+pub mod reverb;
 
 pub const SAMPLE_RATE: i32 = 48000;
 
