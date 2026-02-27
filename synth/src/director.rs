@@ -15,6 +15,7 @@
 
 use crate::instrument::Instrument;
 use crate::random::Random;
+use crate::reverb::Reverb;
 use crate::InstrumentType;
 use std::f32::consts::PI;
 use std::sync::mpsc;
@@ -90,24 +91,27 @@ pub struct Director {
     brightness: f32,
     attack_rate: f32,
     release_rate: f32,
+    body_resonance: f32,
     accent: bool,
     envelope_after_transitions: f32,
     frequency_after_transitions: f32,
     message_receiver: mpsc::Receiver<Message>,
     stereo_width: f32,
     instrument_pan: Vec<f32>,
+    reverb: Vec<Reverb>,
     randomize: f32
 }
 
 impl Director {
     pub fn new(instrument_type: InstrumentType, instrument_count: usize, message_receiver: mpsc::Receiver<Message>) -> Self {
+        let mut fft_planner = RealFftPlanner::<f32>::new();
         let mut result = Self {
             instruments: vec![],
             instrument_type: instrument_type.clone(),
             lowest_note: 0,
             highest_note: 0,
             random: Random::new(),
-            fft_planner: RealFftPlanner::<f32>::new(),
+            fft_planner: fft_planner,
             step: 0,
             transitions: vec![],
             current_note: None,
@@ -122,12 +126,14 @@ impl Director {
             brightness: 1.0,
             attack_rate: 0.8,
             release_rate: 0.5,
+            body_resonance: 0.1,
             accent: false,
             envelope_after_transitions: 0.0,
             frequency_after_transitions: 0.0,
             message_receiver: message_receiver,
             stereo_width: 0.3,
             instrument_pan: vec![],
+            reverb: vec![],
             randomize: 0.1
         };
         result.initialize_instruments(instrument_type, instrument_count);
@@ -155,19 +161,34 @@ impl Director {
             InstrumentType::Violin => {
                 self.lowest_note = 55;
                 self.highest_note = 91;
+                self.body_resonance = 0.18;
             }
             InstrumentType::Viola => {
                 self.lowest_note = 48;
                 self.highest_note = 84;
+                self.body_resonance = 0.18;
             }
             InstrumentType::Cello => {
                 self.lowest_note = 36;
                 self.highest_note = 72;
+                self.body_resonance = 0.35;
             }
             InstrumentType::Bass => {
                 self.lowest_note = 24;
                 self.highest_note = 60;
+                self.body_resonance = 0.5;
             }
+        }
+        let ir = match instrument_type {
+            InstrumentType::Violin => parse_flac(include_bytes!("data/violin.flac")),
+            InstrumentType::Viola => parse_flac(include_bytes!("data/viola.flac")),
+            InstrumentType::Cello => parse_flac(include_bytes!("data/cello.flac")),
+            InstrumentType::Bass => parse_flac(include_bytes!("data/bass.flac"))
+        };
+        self.reverb.clear();
+        self.reverb.push(Reverb::new(&ir, &mut self.fft_planner));
+        if instrument_count > 1 {
+            self.reverb.push(Reverb::new(&ir, &mut self.fft_planner));
         }
         self.update_pan_positions();
         self.update_vibrato();
@@ -263,8 +284,8 @@ impl Director {
 
     /// End the current note.  Because this is a monophonic instrument, note_on() automatically
     /// ends the current note as well.
-    fn note_off(&mut self, legato: bool, sustain: bool) {
-        let mut release_time = 1000 + (10000.0*(1.0-self.release_rate)) as i64;
+    fn note_off(&mut self) {
+        let release_time = 1000 + (5000.0*(1.0-self.release_rate)) as i64;
         self.add_envelope_transition(release_time, 0.0);
    }
 
@@ -311,7 +332,14 @@ impl Director {
                 right += self.instrument_pan[i].sin()*signal;
             }
         // }
-        (0.05*left, 0.05*right)
+        left += self.body_resonance*self.reverb[0].process(left);
+        if self.reverb.len() == 1 {
+            right = left;
+        }
+        else {
+            right += self.body_resonance*self.reverb[1].process(right);
+        }
+        (0.01*left, 0.01*right)
     }
 
     /// This is called occasionally by generate().  It processes any Messages that have been
@@ -328,7 +356,7 @@ impl Director {
                             let _ = self.note_on(note_index, velocity);
                         }
                         Message::NoteOff => {
-                            self.note_off(false, false);
+                            self.note_off();
                         }
                         Message::SetVolume {volume} => {
                             self.volume = volume;
@@ -481,4 +509,17 @@ impl Director {
             }
         }
     }
+}
+
+/// Convert a FLAC encoded sample to raw audio data.
+fn parse_flac(file: &[u8]) -> Vec<f32> {
+    let mut reader = claxon::FlacReader::new(file).unwrap();
+    assert_eq!(48000, reader.streaminfo().sample_rate);
+    assert_eq!(1, reader.streaminfo().channels);
+    assert_eq!(16, reader.streaminfo().bits_per_sample);
+    let mut samples = Vec::new();
+    for sample in reader.samples() {
+        samples.push((sample.unwrap() as f32)/32768.0);
+    }
+    samples
 }
