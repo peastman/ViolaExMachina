@@ -144,10 +144,9 @@ impl Instrument {
     fn add_bow_excitation(&mut self) {
         let c = self.volume/(self.spectrum_size as f32).sqrt();
         for i in 1..self.spectrum_size {
-           let scale = c*(1.0-(i as f32-3.0).abs()/self.spectrum_size as f32).powi(20);
-           let c1 = self.random.get_uniform();
-           let c2 = self.random.get_uniform();
-           self.spectrum_buffer[i] += Complex::<f32>::new(scale*(1.0-c1*c1), scale*(1.0-c2*c2));
+           let decay = 1.0-(1.0-self.volume)*(i as f32/self.spectrum_size as f32);
+           let scale = c*decay*(1.0-(i as f32-3.0).abs()/self.spectrum_size as f32).powi(20);
+           self.spectrum_buffer[i] += Complex::<f32>::new(scale*self.random.get_uniform(), scale*self.random.get_uniform());
         }
     }
 
@@ -279,7 +278,7 @@ impl DecayingNote {
         let spectrum_size = self.spectrum_buffer.len();
         for i in 1..spectrum_size {
             let f = i as f32/spectrum_size as f32;
-            let scale = 1.0-(0.07-0.06*(-8.0*f).exp())*(spectrum_size as f32).sqrt()*0.1;
+            let scale = 1.0-(0.07-0.06*(-8.0*f).exp())*(spectrum_size as f32).sqrt()*0.15;
             self.spectrum_buffer[i] *= scale;
         }
     }

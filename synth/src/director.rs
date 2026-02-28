@@ -404,13 +404,8 @@ impl Director {
     fn update_vibrato(&mut self) {
         let amplitude = 0.01*self.vibrato;
         let n = self.instruments.len();
-        for (i, instrument) in &mut self.instruments.iter_mut().enumerate() {
-            if n < 4 {
-                instrument.set_vibrato_amplitude(amplitude*(1.0-0.25*i as f32));
-            }
-            else {
-                instrument.set_vibrato_amplitude(amplitude*(1.0-0.5*(i as f32)/((n-1) as f32)));
-            }
+        for instrument in &mut self.instruments.iter_mut() {
+            instrument.set_vibrato_amplitude(amplitude);
         }
     }
 
