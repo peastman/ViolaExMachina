@@ -158,25 +158,19 @@ impl Director {
         self.bend = 1.0;
         self.envelope_after_transitions = 0.0;
         self.frequency_after_transitions = 0.0;
+        self.lowest_note = instrument_type.lowest_note();
+        self.highest_note = instrument_type.highest_note();
         match instrument_type {
             InstrumentType::Violin => {
-                self.lowest_note = 55;
-                self.highest_note = 91;
                 self.body_resonance = 0.18;
             }
             InstrumentType::Viola => {
-                self.lowest_note = 48;
-                self.highest_note = 84;
                 self.body_resonance = 0.18;
             }
             InstrumentType::Cello => {
-                self.lowest_note = 36;
-                self.highest_note = 72;
                 self.body_resonance = 0.35;
             }
             InstrumentType::Bass => {
-                self.lowest_note = 24;
-                self.highest_note = 60;
                 self.body_resonance = 0.5;
             }
         }
@@ -408,7 +402,7 @@ impl Director {
 
     /// Update the vibrato of all Instruments.  This is called whenever the Director's vibrato is changed.
     fn update_vibrato(&mut self) {
-        let amplitude = 0.04*(self.vibrato+0.1);
+        let amplitude = 0.01*self.vibrato;
         let n = self.instruments.len();
         for (i, instrument) in &mut self.instruments.iter_mut().enumerate() {
             if n < 4 {

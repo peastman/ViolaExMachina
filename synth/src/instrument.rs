@@ -25,11 +25,17 @@ use rustfft::num_complex::Complex;
 /// In addition, consonants can be synthesized by injecting extra noise at an arbitrary point in
 /// the vocal tract.
 pub struct Instrument {
+    instrument_type: InstrumentType,
     volume: f32,
     frequency: f32,
-    vibrato_frequency: f32,
+    vibrato_low_frequency: f32,
+    vibrato_high_frequency: f32,
     vibrato_amplitude: f32,
+    vibrato_frequency_drift_amplitude: f32,
+    vibrato_amplitude_drift_amplitude: f32,
     tremolo_amplitude: f32,
+    vibrato_phase: f32,
+    vibrato_amplitude_drift: f32,
     spectrum_buffer: Vec<Complex<f32>>,
     spectrum_temp: Vec<Complex<f32>>,
     scratch: Vec<Complex<f32>>,
@@ -47,13 +53,39 @@ pub struct Instrument {
 
 impl Instrument {
     pub fn new(instrument_type: InstrumentType, index: usize) -> Self {
+        let vibrato_low_frequency;
+        let vibrato_high_frequency;
+        match instrument_type {
+            InstrumentType::Violin => {
+                vibrato_low_frequency = 5.15;
+                vibrato_high_frequency = 5.4;
+            }
+            InstrumentType::Viola => {
+                vibrato_low_frequency = 5.15;
+                vibrato_high_frequency = 5.4;
+            }
+            InstrumentType::Cello => {
+                vibrato_low_frequency = 5.0;
+                vibrato_high_frequency = 5.5;
+            }
+            InstrumentType::Bass => {
+                vibrato_low_frequency = 4.9;
+                vibrato_high_frequency = 5.4;
+            }
+        }
         let mut random = Random::new();
         Self {
+            instrument_type: instrument_type,
             volume: 1.0,
             frequency: 440.0,
-            vibrato_frequency: 1.0,
+            vibrato_low_frequency: vibrato_low_frequency,
+            vibrato_high_frequency: vibrato_high_frequency,
             vibrato_amplitude: 0.0,
+            vibrato_frequency_drift_amplitude: 0.05,
+            vibrato_amplitude_drift_amplitude: 0.4,
             tremolo_amplitude: 0.0,
+            vibrato_phase: 0.3*index as f32,
+            vibrato_amplitude_drift: random.get_normal(),
             spectrum_buffer: vec![],
             spectrum_temp: vec![],
             scratch: vec![],
@@ -96,16 +128,6 @@ impl Instrument {
     /// Set the amplitude of the bow noise.
     pub fn set_noise(&mut self, noise: f32) {
         // self.glottis.noise = noise;
-    }
-
-    /// Get the frequency of vibrato.
-    pub fn get_vibrato_frequency(&self) -> f32 {
-        self.vibrato_frequency
-    }
-
-    /// Set the frequency of vibrato.
-    pub fn set_vibrato_frequency(&mut self, frequency: f32) {
-        self.vibrato_frequency = frequency;
     }
 
     /// Set the amplitude of vibrato.
@@ -162,9 +184,25 @@ impl Instrument {
             }
             self.decaying_notes.retain(|n| !n.finished);
 
-            // Compute the instantaneous frequency and update the buffer sizes.
+            // Vary the vibrato frequency and amplitude to give a more natural sound.
 
-            let current_frequency = self.frequency;
+            self.vibrato_amplitude_drift = 0.99*self.vibrato_amplitude_drift + 0.1*self.random.get_normal();
+            let x = (self.last_note-self.instrument_type.lowest_note()) as f32 / (self.instrument_type.highest_note()-self.instrument_type.lowest_note()) as f32;
+            let vibrato_base_freq = self.vibrato_low_frequency + x*x*(self.vibrato_high_frequency-self.vibrato_low_frequency);
+            let vibrato_freq = vibrato_base_freq * (1.0+self.vibrato_frequency_drift_amplitude*(0.5*PI*self.vibrato_phase).cos());
+            let vibrato_amplitude = self.vibrato_amplitude * (1.0+self.vibrato_amplitude_drift_amplitude*self.vibrato_amplitude_drift);
+
+            // Compute the instantaneous frequency.  This depends on the primary frequency of the note
+            // and vibrato.
+
+            let vibrato_offset = vibrato_freq*self.period / SAMPLE_RATE as f32;
+            self.vibrato_phase = (self.vibrato_phase+vibrato_offset) % 4.0;
+            let vibrato = (2.0*PI*self.vibrato_phase).sin();
+            let vibrato = vibrato*vibrato*vibrato;
+            let current_frequency = self.frequency * (1.0+vibrato_amplitude*vibrato);
+
+            // Update the buffer sizes.
+
             let new_period = SAMPLE_RATE as f32/current_frequency;
             let new_output_size = (new_period+self.period_offset).floor() as usize;
             let new_spectrum_size = (new_output_size as f32/2.0 + 1.0).floor() as usize;

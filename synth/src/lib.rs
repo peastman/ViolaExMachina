@@ -28,3 +28,23 @@ pub enum InstrumentType {
     Cello,
     Bass
 }
+
+impl InstrumentType {
+    pub fn lowest_note(&self) -> i32 {
+        match self {
+            InstrumentType::Violin => 55,
+            InstrumentType::Viola => 48,
+            InstrumentType::Cello => 36,
+            InstrumentType::Bass => 24
+        }
+    }
+
+    pub fn highest_note(&self) -> i32 {
+        match self {
+            InstrumentType::Violin => 91,
+            InstrumentType::Viola => 84,
+            InstrumentType::Cello => 72,
+            InstrumentType::Bass => 60
+        }
+    }
+}
