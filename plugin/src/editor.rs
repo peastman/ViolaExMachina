@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Lesser General Public License along with Viola Ex Machina.
 // If not, see <https://www.gnu.org/licenses/>.
 
-use crate::{ViolaExMachinaParams, InstrumentType};
+use crate::{ViolaExMachinaParams, InstrumentType, Articulation};
 use synth::director::Message;
 use nih_plug::prelude::*;
 use nih_plug_egui::{create_egui_editor, egui};
@@ -71,6 +71,7 @@ pub fn draw_editor(params: Arc<ViolaExMachinaParams>, sender: Arc<Mutex<mpsc::Se
 fn draw_controls_panel(ui: &mut egui::Ui, params: &Arc<ViolaExMachinaParams>, sender: &Arc<Mutex<mpsc::Sender<Message>>>, setter: &ParamSetter) {
     let mut new_instrument_type = params.instrument_type.value();
     let mut new_instrument_count = params.instrument_count.value();
+    let mut new_articulation = params.articulation.value();
     ui.label(egui::RichText::new("The instruments in the ensemble").italics());
     ui.add_space(5.0);
     ui.horizontal(|ui| {
@@ -104,6 +105,31 @@ fn draw_controls_panel(ui: &mut egui::Ui, params: &Arc<ViolaExMachinaParams>, se
     ui.label(egui::RichText::new("These controls can be mapped to MIDI CCs and automated in a DAW").italics());
     ui.add_space(5.0);
     egui::Grid::new("sliders").show(ui, |ui| {
+        // The choice for articulation.
+
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+            ui.label("Articulation");
+        });
+        egui::ComboBox::from_id_salt("Articulation").selected_text(format!("{:?}", new_articulation)).show_ui(ui, |ui| {
+            ui.selectable_value(&mut new_articulation, Articulation::Arco, "Arco");
+            ui.selectable_value(&mut new_articulation, Articulation::Marcato, "Marcato");
+            ui.selectable_value(&mut new_articulation, Articulation::Spiccato, "Spiccato");
+        });
+        ui.end_row();
+        if params.articulation.value() != new_articulation {
+            setter.begin_set_parameter(&params.articulation);
+            setter.set_parameter(&params.articulation, new_articulation);
+            setter.end_set_parameter(&params.articulation);
+            let articulation = match &new_articulation {
+                Articulation::Arco => synth::Articulation::Arco,
+                Articulation::Marcato => synth::Articulation::Marcato,
+                Articulation::Spiccato => synth::Articulation::Spiccato
+            };
+            let _ = sender.lock().unwrap().send(Message::SetArticulation {articulation: articulation});
+        };
+
+        // The sliders
+
         ui.spacing_mut().slider_width = 200.0;
         draw_param_slider(ui, &params.dynamics, setter);
         draw_param_slider(ui, &params.vibrato, setter);

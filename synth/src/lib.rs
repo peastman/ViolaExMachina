@@ -48,3 +48,10 @@ impl InstrumentType {
         }
     }
 }
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Articulation {
+    Arco,
+    Marcato,
+    Spiccato
+}

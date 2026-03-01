@@ -16,7 +16,7 @@
 use crate::instrument::Instrument;
 use crate::random::Random;
 use crate::reverb::Reverb;
-use crate::InstrumentType;
+use crate::{InstrumentType, Articulation};
 use std::f32::consts::PI;
 use std::sync::mpsc;
 use realfft::RealFftPlanner;
@@ -27,6 +27,7 @@ pub enum Message {
     Reinitialize {instrument_type: InstrumentType, instrument_count: usize},
     NoteOn {note_index: i32, velocity: f32},
     NoteOff,
+    SetArticulation {articulation: Articulation},
     SetVolume {volume: f32},
     SetPitchBend {semitones: f32},
     SetVibrato {vibrato: f32},
@@ -72,6 +73,7 @@ struct Note {
 pub struct Director {
     instruments: Vec<Instrument>,
     instrument_type: InstrumentType,
+    articulation: Articulation,
     lowest_note: i32,
     highest_note: i32,
     random: Random,
@@ -108,6 +110,7 @@ impl Director {
         let mut result = Self {
             instruments: vec![],
             instrument_type: instrument_type.clone(),
+            articulation: Articulation::Arco,
             lowest_note: 0,
             highest_note: 0,
             random: Random::new(),
@@ -204,8 +207,25 @@ impl Director {
             self.frequency[i] = 440.0 * f32::powf(2.0, (note_index-69) as f32/12.0);
         }
         self.update_frequency();
-        let attack_time = 1000+(20000.0*(1.0-self.attack_rate)) as i64;
-        self.add_envelope_transition(attack_time, 1.0);
+        match &self.articulation {
+            Articulation::Arco => {
+                let attack_time = 1000+(20000.0*(1.0-velocity)) as i64;
+                self.add_envelope_transition(attack_time, 1.0);
+            }
+            Articulation::Marcato => {
+                let attack_time = 1000+(5000.0*(1.0-velocity)) as i64;
+                let peak = 1.0+4.0*velocity;
+                self.add_envelope_transition(attack_time, peak);
+                self.add_transition(attack_time, 2*attack_time, TransitionData::EnvelopeChange {start_envelope: peak, end_envelope: 1.0});
+            }
+            Articulation::Spiccato => {
+                let attack_time = 0;
+                let hold_time = 4000;
+                let peak = 0.1+5.0*velocity;
+                self.add_envelope_transition(attack_time, peak);
+                self.add_transition(attack_time+hold_time, attack_time, TransitionData::EnvelopeChange {start_envelope: peak, end_envelope: 0.0});
+            }
+        }
         for instrument in &mut self.instruments {
             instrument.note_on(note_index);
         }
@@ -304,6 +324,9 @@ impl Director {
                             self.volume = volume;
                             self.update_volume();
                             self.update_sound();
+                        }
+                        Message::SetArticulation {articulation} => {
+                            self.articulation = articulation;
                         }
                         Message::SetPitchBend {semitones} => {
                             self.bend = f32::powf(2.0, semitones as f32/12.0);

@@ -50,6 +50,8 @@ struct ViolaExMachinaParams {
     pub instrument_type: EnumParam<InstrumentType>,
     #[id = "instrument_count"]
     pub instrument_count: IntParam,
+    #[id = "articulation"]
+    pub articulation: EnumParam<Articulation>,
     #[id = "dynamics"]
     pub dynamics: FloatParam,
     #[id = "vibrato"]
@@ -67,19 +69,29 @@ struct ViolaExMachinaParams {
     #[id = "time_spread"]
     pub time_spread: IntParam,
     #[id = "accent"]
-    pub accent: BoolParam,
+    pub accent: BoolParam
 }
 
 #[derive(Copy, Clone, Enum, Debug, PartialEq)]
 pub enum InstrumentType {
-    #[id = "soprano"]
+    #[id = "violin"]
     Violin,
-    #[id = "alto"]
+    #[id = "viola"]
     Viola,
-    #[id = "tenor"]
+    #[id = "cello"]
     Cello,
     #[id = "bass"]
-    Bass,
+    Bass
+}
+
+#[derive(Copy, Clone, Enum, Debug, PartialEq)]
+pub enum Articulation {
+    #[id = "arco"]
+    Arco,
+    #[id = "marcato"]
+    Marcato,
+    #[id = "spiccato"]
+    Spiccato
 }
 
 impl Default for ViolaExMachina {
@@ -113,6 +125,7 @@ impl Default for ViolaExMachinaParams {
             editor_state: EguiState::from_size(600, 400),
             instrument_type: EnumParam::new("Instrument Type", InstrumentType::Violin).non_automatable(),
             instrument_count: IntParam::new("Instruments", 1, IntRange::Linear {min: 1, max: 8}).non_automatable(),
+            articulation: EnumParam::new("Articulation", Articulation::Arco),
             dynamics: FloatParam::new("Dynamics", 1.0, FloatRange::Linear {min: 0.0, max: 1.0}),
             vibrato: FloatParam::new("Vibrato", 0.4, FloatRange::Linear {min: 0.0, max: 1.0}),
             intensity: FloatParam::new("Intensity", 0.5, FloatRange::Linear {min: 0.0, max: 1.0}),
