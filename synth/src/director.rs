@@ -16,7 +16,7 @@
 use crate::instrument::Instrument;
 use crate::random::Random;
 use crate::reverb::Reverb;
-use crate::{InstrumentType, Articulation};
+use crate::{InstrumentType, Articulation, SAMPLE_RATE};
 use std::f32::consts::PI;
 use std::sync::mpsc;
 use realfft::RealFftPlanner;
@@ -106,7 +106,6 @@ pub struct Director {
 
 impl Director {
     pub fn new(instrument_type: InstrumentType, instrument_count: usize, message_receiver: mpsc::Receiver<Message>) -> Self {
-        let mut fft_planner = RealFftPlanner::<f32>::new();
         let mut result = Self {
             instruments: vec![],
             instrument_type: instrument_type.clone(),
@@ -114,7 +113,7 @@ impl Director {
             lowest_note: 0,
             highest_note: 0,
             random: Random::new(),
-            fft_planner: fft_planner,
+            fft_planner: RealFftPlanner::<f32>::new(),
             step: 0,
             steps_until_off: 0,
             transitions: vec![],
@@ -207,6 +206,9 @@ impl Director {
             self.frequency[i] = 440.0 * f32::powf(2.0, (note_index-69) as f32/12.0);
         }
         self.update_frequency();
+        for instrument in &mut self.instruments {
+            instrument.note_on(note_index, self.articulation);
+        }
         match &self.articulation {
             Articulation::Arco => {
                 let attack_time = 1000+(20000.0*(1.0-velocity)) as i64;
@@ -219,7 +221,7 @@ impl Director {
                 self.add_transition(attack_time, 2*attack_time, TransitionData::EnvelopeChange {start_envelope: peak, end_envelope: 1.0});
             }
             Articulation::Spiccato => {
-                let hold_time = 3000;
+                let hold_time = 2750+(self.random.get_int()%500) as i64;
                 let peak = 0.05+5.0*velocity;
                 self.add_envelope_transition(0, peak);
                 self.add_transition(hold_time, 0, TransitionData::EnvelopeChange {start_envelope: peak, end_envelope: 0.0});
@@ -228,14 +230,27 @@ impl Director {
 
                 let end_frequency = self.frequency[0];
                 let start_frequency = 1.02*end_frequency;
-                for i in 0..self.envelope.len() {
+                for i in 0..self.frequency.len() {
                     self.frequency[i] = start_frequency;
                 }
                 self.add_transition(0, 2000, TransitionData::FrequencyChange {start_frequency: start_frequency, end_frequency: end_frequency});
             }
-        }
-        for instrument in &mut self.instruments {
-            instrument.note_on(note_index);
+            Articulation::Pizzicato => {
+                let peak = 1.0+15.0*velocity;
+                self.add_envelope_transition(0, peak);
+                let end_frequency = self.frequency[0];
+                let period = SAMPLE_RATE as f32/end_frequency;
+                let hold_time = (2.0*period) as i64;
+                self.add_transition(hold_time, 0, TransitionData::EnvelopeChange {start_envelope: peak, end_envelope: 0.0});
+
+                // Plucking the string causes a momentary shift in pitch.
+
+                let start_frequency = 1.015*end_frequency;
+                for i in 0..self.frequency.len() {
+                    self.frequency[i] = start_frequency;
+                }
+                self.add_transition(0, 1000, TransitionData::FrequencyChange {start_frequency: start_frequency, end_frequency: end_frequency});
+            }
         }
         Ok(())
     }
@@ -243,8 +258,14 @@ impl Director {
     /// End the current note.  Because this is a monophonic instrument, note_on() automatically
     /// ends the current note as well.
     fn note_off(&mut self) {
-        let release_time = 1000 + (5000.0*(1.0-self.release_rate)) as i64;
-        self.add_envelope_transition(release_time, 0.0);
+        match &self.articulation {
+            Articulation::Spiccato => {}
+            Articulation::Pizzicato => {}
+            _ => {
+                let release_time = 1000 + (5000.0*(1.0-self.release_rate)) as i64;
+                self.add_envelope_transition(release_time, 0.0);
+            }
+        }
    }
 
     /// Add a Transition to the queue.
@@ -434,7 +455,6 @@ impl Director {
     /// Update the vibrato of all Instruments.  This is called whenever the Director's vibrato is changed.
     fn update_vibrato(&mut self) {
         let amplitude = 0.01*self.vibrato;
-        let n = self.instruments.len();
         for instrument in &mut self.instruments.iter_mut() {
             instrument.set_vibrato_amplitude(amplitude);
         }

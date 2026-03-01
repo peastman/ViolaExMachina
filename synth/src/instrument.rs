@@ -16,7 +16,7 @@
 use std::f32::consts::PI;
 use std::sync::Arc;
 use crate::random::Random;
-use crate::InstrumentType;
+use crate::{InstrumentType, Articulation};
 use crate::SAMPLE_RATE;
 use realfft::{RealFftPlanner, ComplexToReal};
 use rustfft::num_complex::Complex;
@@ -48,7 +48,8 @@ pub struct Instrument {
     random: Random,
     decaying_notes: Vec<DecayingNote>,
     start_new_note: bool,
-    last_note: i32
+    last_note: i32,
+    last_articulation: Articulation
 }
 
 impl Instrument {
@@ -98,16 +99,18 @@ impl Instrument {
             random: random,
             decaying_notes: vec![],
             start_new_note: false,
-            last_note: 0
+            last_note: 0,
+            last_articulation: Articulation::Arco
         }
     }
 
     /// Signal the start of a new note.
-    pub fn note_on(&mut self, note: i32) {
+    pub fn note_on(&mut self, note: i32, articulation: Articulation) {
         if note != self.last_note {
             self.start_new_note = true;
             self.last_note = note;
         }
+        self.last_articulation = articulation;
     }
 
     /// Get the volume of the excitation from the bow (between 0.0 and 1.0).
@@ -143,10 +146,29 @@ impl Instrument {
     /// Add excitation from the bow to the spectrum.
     fn add_bow_excitation(&mut self) {
         let c = self.volume/(self.spectrum_size as f32).sqrt();
-        for i in 1..self.spectrum_size {
-           let decay = 1.0-(1.0-self.volume)*(i as f32/self.spectrum_size as f32);
-           let scale = c*decay*(1.0-(i as f32-3.0).abs()/self.spectrum_size as f32).powi(20);
-           self.spectrum_buffer[i] += Complex::<f32>::new(scale*self.random.get_uniform(), scale*self.random.get_uniform());
+        let x = (self.last_note-self.instrument_type.lowest_note()) as f32 / (self.instrument_type.highest_note()-self.instrument_type.lowest_note()) as f32;
+        let decay_target;
+        if x > 0.5 {
+            decay_target = (1.0-self.volume)*(1.5-x);
+        }
+        else {
+            decay_target = 1.0-self.volume;
+        }
+        match &self.last_articulation {
+            Articulation::Pizzicato => {
+                for i in 1..self.spectrum_size {
+                    let decay = 1.0-decay_target*(i as f32/self.spectrum_size as f32);
+                    let scale = c*decay*(1.0-i as f32/self.spectrum_size as f32).powi(20);
+                    self.spectrum_buffer[i] += Complex::<f32>::new(scale*self.random.get_uniform(), scale*self.random.get_uniform());
+                }
+            }
+            _ => {
+                for i in 1..self.spectrum_size {
+                    let decay = 1.0-decay_target*(i as f32/self.spectrum_size as f32);
+                    let scale = c*decay*(1.0-(i as f32-3.0).abs()/self.spectrum_size as f32).powi(20);
+                    self.spectrum_buffer[i] += Complex::<f32>::new(scale*self.random.get_uniform(), scale*self.random.get_uniform());
+                }
+            }
         }
     }
 

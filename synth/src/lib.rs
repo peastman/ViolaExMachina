@@ -53,5 +53,6 @@ impl InstrumentType {
 pub enum Articulation {
     Arco,
     Marcato,
-    Spiccato
+    Spiccato,
+    Pizzicato
 }

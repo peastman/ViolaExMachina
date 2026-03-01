@@ -114,6 +114,7 @@ fn draw_controls_panel(ui: &mut egui::Ui, params: &Arc<ViolaExMachinaParams>, se
             ui.selectable_value(&mut new_articulation, Articulation::Arco, "Arco");
             ui.selectable_value(&mut new_articulation, Articulation::Marcato, "Marcato");
             ui.selectable_value(&mut new_articulation, Articulation::Spiccato, "Spiccato");
+            ui.selectable_value(&mut new_articulation, Articulation::Pizzicato, "Pizzicato");
         });
         ui.end_row();
         if params.articulation.value() != new_articulation {
@@ -123,7 +124,8 @@ fn draw_controls_panel(ui: &mut egui::Ui, params: &Arc<ViolaExMachinaParams>, se
             let articulation = match &new_articulation {
                 Articulation::Arco => synth::Articulation::Arco,
                 Articulation::Marcato => synth::Articulation::Marcato,
-                Articulation::Spiccato => synth::Articulation::Spiccato
+                Articulation::Spiccato => synth::Articulation::Spiccato,
+                Articulation::Pizzicato => synth::Articulation::Pizzicato
             };
             let _ = sender.lock().unwrap().send(Message::SetArticulation {articulation: articulation});
         };
