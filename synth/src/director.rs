@@ -219,11 +219,19 @@ impl Director {
                 self.add_transition(attack_time, 2*attack_time, TransitionData::EnvelopeChange {start_envelope: peak, end_envelope: 1.0});
             }
             Articulation::Spiccato => {
-                let attack_time = 0;
-                let hold_time = 4000;
-                let peak = 0.1+5.0*velocity;
-                self.add_envelope_transition(attack_time, peak);
-                self.add_transition(attack_time+hold_time, attack_time, TransitionData::EnvelopeChange {start_envelope: peak, end_envelope: 0.0});
+                let hold_time = 3000;
+                let peak = 0.05+5.0*velocity;
+                self.add_envelope_transition(0, peak);
+                self.add_transition(hold_time, 0, TransitionData::EnvelopeChange {start_envelope: peak, end_envelope: 0.0});
+
+                // The bow striking the string causes a momentary shift in pitch.
+
+                let end_frequency = self.frequency[0];
+                let start_frequency = 1.02*end_frequency;
+                for i in 0..self.envelope.len() {
+                    self.frequency[i] = start_frequency;
+                }
+                self.add_transition(0, 2000, TransitionData::FrequencyChange {start_frequency: start_frequency, end_frequency: end_frequency});
             }
         }
         for instrument in &mut self.instruments {

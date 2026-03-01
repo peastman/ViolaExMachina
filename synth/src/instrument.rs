@@ -154,7 +154,7 @@ impl Instrument {
     fn apply_filter(&mut self) {
         for i in 1..self.spectrum_size {
             let f = i as f32/self.spectrum_size as f32;
-            let scale = 1.0-(0.07-0.06*(-8.0*f).exp())*(self.spectrum_size as f32).sqrt()*0.1;
+            let scale = 1.0-(0.07-0.06*(-8.0*f).exp())*(self.spectrum_size as f32).sqrt()*0.15;
             self.spectrum_buffer[i] *= scale;
         }
     }
@@ -238,6 +238,8 @@ impl Instrument {
             self.output_position = 0;
         }
         else {
+            // Add the sound from the tails of previous notes.
+
             for note in &mut self.decaying_notes {
                 result += note.generate(fft_planner);
             }
