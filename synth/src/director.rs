@@ -35,7 +35,7 @@ pub enum Message {
     SetBrightness {brightness: f32},
     SetAttackRate {attack: f32},
     SetReleaseRate {release: f32},
-    SetAccent {accent: bool},
+    SetHarmonics {harmonics: bool},
     SetStereoWidth {width: f32},
     SetMaxInstrumentDelay {max_delay: i64},
     SetRandomize {randomize: f32}
@@ -94,7 +94,7 @@ pub struct Director {
     attack_rate: f32,
     release_rate: f32,
     body_resonance: f32,
-    accent: bool,
+    harmonics: bool,
     envelope_after_transitions: f32,
     frequency_after_transitions: f32,
     message_receiver: mpsc::Receiver<Message>,
@@ -130,7 +130,7 @@ impl Director {
             attack_rate: 0.8,
             release_rate: 0.5,
             body_resonance: 0.1,
-            accent: false,
+            harmonics: false,
             envelope_after_transitions: 0.0,
             frequency_after_transitions: 0.0,
             message_receiver: message_receiver,
@@ -189,6 +189,7 @@ impl Director {
         }
         self.update_pan_positions();
         self.update_vibrato();
+        self.update_harmonics();
         self.update_volume();
         self.update_frequency();
         self.update_sound();
@@ -249,7 +250,7 @@ impl Director {
                 for i in 0..self.frequency.len() {
                     self.frequency[i] = start_frequency;
                 }
-                self.add_transition(0, 1000, TransitionData::FrequencyChange {start_frequency: start_frequency, end_frequency: end_frequency});
+                self.add_transition(0, hold_time, TransitionData::FrequencyChange {start_frequency: start_frequency, end_frequency: end_frequency});
             }
         }
         Ok(())
@@ -378,8 +379,9 @@ impl Director {
                         Message::SetReleaseRate {release} => {
                             self.release_rate = release;
                         }
-                        Message::SetAccent {accent} => {
-                            self.accent = accent;
+                        Message::SetHarmonics {harmonics} => {
+                            self.harmonics = harmonics;
+                            self.update_harmonics();
                         }
                         Message::SetStereoWidth {width} => {
                             self.stereo_width = width;
@@ -460,6 +462,12 @@ impl Director {
         }
     }
 
+    /// Update whether harmonics are enabled for all Instruments.
+    fn update_harmonics(&mut self) {
+        for instrument in &mut self.instruments.iter_mut() {
+            instrument.set_harmonics(self.harmonics);
+        }
+    }
     /// Update Rd and noise amplitude for all instruments.  They depend on the volume and the note
     /// being played.
     fn update_sound(&mut self) {

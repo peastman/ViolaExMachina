@@ -39,7 +39,7 @@ pub struct ViolaExMachina {
     last_release_rate: f32,
     last_stereo_width: f32,
     last_time_spread: i32,
-    last_accent: bool
+    last_harmonics: bool
 }
 
 #[derive(Params)]
@@ -68,8 +68,8 @@ struct ViolaExMachinaParams {
     pub stereo_width: FloatParam,
     #[id = "time_spread"]
     pub time_spread: IntParam,
-    #[id = "accent"]
-    pub accent: BoolParam
+    #[id = "harmonics"]
+    pub harmonics: BoolParam
 }
 
 #[derive(Copy, Clone, Enum, Debug, PartialEq)]
@@ -116,7 +116,7 @@ impl Default for ViolaExMachina {
             last_release_rate: -1.0,
             last_stereo_width: -1.0,
             last_time_spread: -1,
-            last_accent: false
+            last_harmonics: false
         }
     }
 }
@@ -136,7 +136,7 @@ impl Default for ViolaExMachinaParams {
             release_rate: FloatParam::new("Release Rate", 0.5, FloatRange::Linear {min: 0.0, max: 1.0}),
             stereo_width: FloatParam::new("Stereo Width", 0.7, FloatRange::Linear {min: 0.0, max: 1.0}),
             time_spread: IntParam::new("Time Spread", 50, IntRange::Linear {min: 0, max: 100}),
-            accent: BoolParam::new("Accent", false)
+            harmonics: BoolParam::new("Harmonics", false)
         };
         result
     }
@@ -222,9 +222,9 @@ impl Plugin for ViolaExMachina {
             self.last_time_spread = self.params.time_spread.value();
             let _ = sender.send(Message::SetMaxInstrumentDelay {max_delay: (self.last_time_spread*synth::SAMPLE_RATE/1000) as i64});
         }
-        if self.last_accent != self.params.accent.value() {
-            self.last_accent = self.params.accent.value();
-            let _ = sender.send(Message::SetAccent {accent: self.last_accent});
+        if self.last_harmonics != self.params.harmonics.value() {
+            self.last_harmonics = self.params.harmonics.value();
+            let _ = sender.send(Message::SetHarmonics {harmonics: self.last_harmonics});
         }
         for (sample_id, channel_samples) in buffer.iter_samples().enumerate() {
             let mut send_note_off = false;

@@ -28,6 +28,7 @@ pub struct Instrument {
     instrument_type: InstrumentType,
     volume: f32,
     frequency: f32,
+    harmonics: bool,
     vibrato_low_frequency: f32,
     vibrato_high_frequency: f32,
     vibrato_amplitude: f32,
@@ -79,6 +80,7 @@ impl Instrument {
             instrument_type: instrument_type,
             volume: 1.0,
             frequency: 440.0,
+            harmonics: false,
             vibrato_low_frequency: vibrato_low_frequency,
             vibrato_high_frequency: vibrato_high_frequency,
             vibrato_amplitude: 0.0,
@@ -143,9 +145,17 @@ impl Instrument {
         self.tremolo_amplitude = amplitude;
     }
 
+    /// Set whether harmonics are enabled.
+    pub fn set_harmonics(&mut self, harmonics: bool) {
+        self.harmonics = harmonics;
+    }
+
     /// Add excitation from the bow to the spectrum.
     fn add_bow_excitation(&mut self) {
-        let c = self.volume/(self.spectrum_size as f32).sqrt();
+        let mut c = self.volume/(self.spectrum_size as f32).sqrt();
+        if self.harmonics {
+            c *= 2.0;
+        }
         let x = (self.last_note-self.instrument_type.lowest_note()) as f32 / (self.instrument_type.highest_note()-self.instrument_type.lowest_note()) as f32;
         let decay_target;
         if x > 0.5 {
@@ -178,6 +188,13 @@ impl Instrument {
             let f = i as f32/self.spectrum_size as f32;
             let scale = 1.0-(0.07-0.06*(-8.0*f).exp())*(self.spectrum_size as f32).sqrt()*0.15;
             self.spectrum_buffer[i] *= scale;
+        }
+        if self.harmonics {
+            for i in 1..self.spectrum_size {
+                if i%4 != 0 {
+                    self.spectrum_buffer[i] *= 0.1;
+                }
+            }
         }
     }
 

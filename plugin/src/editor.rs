@@ -150,11 +150,11 @@ fn draw_controls_panel(ui: &mut egui::Ui, params: &Arc<ViolaExMachinaParams>, se
             setter.end_set_parameter(&params.time_spread);
         }
         ui.end_row();
-        let mut accent = params.accent.value();
-        if ui.checkbox(&mut accent, "Accent").changed() {
-            setter.begin_set_parameter(&params.accent);
-            setter.set_parameter(&params.accent, accent);
-            setter.end_set_parameter(&params.accent);
+        let mut harmonics = params.harmonics.value();
+        if ui.checkbox(&mut harmonics, "Harmonics").changed() {
+            setter.begin_set_parameter(&params.harmonics);
+            setter.set_parameter(&params.harmonics, harmonics);
+            setter.end_set_parameter(&params.harmonics);
         }
     });
 }
