@@ -26,6 +26,7 @@ use rustfft::num_complex::Complex;
 /// the vocal tract.
 pub struct Instrument {
     instrument_type: InstrumentType,
+    spectrum_coeff: (f32, f32, f32, f32),
     volume: f32,
     frequency: f32,
     harmonics: bool,
@@ -57,27 +58,33 @@ impl Instrument {
     pub fn new(instrument_type: InstrumentType, index: usize) -> Self {
         let vibrato_low_frequency;
         let vibrato_high_frequency;
+        let spectrum_coeff;
         match instrument_type {
             InstrumentType::Violin => {
                 vibrato_low_frequency = 5.15;
                 vibrato_high_frequency = 5.4;
+                spectrum_coeff = (0.23477698, -0.61536557, 1.79446171, -4.53092934);
             }
             InstrumentType::Viola => {
                 vibrato_low_frequency = 5.15;
                 vibrato_high_frequency = 5.4;
+                spectrum_coeff = (0.71382589, -2.82709236, 1.52126997, -4.04880334);
             }
             InstrumentType::Cello => {
                 vibrato_low_frequency = 5.0;
                 vibrato_high_frequency = 5.5;
+                spectrum_coeff = (0.12175271, -0.27890300, 3.28620357, -7.92322202);
             }
             InstrumentType::Bass => {
                 vibrato_low_frequency = 4.9;
                 vibrato_high_frequency = 5.4;
+                spectrum_coeff = (0.31336917, -0.99976244, 1.1930173, -4.76781326);
             }
         }
         let mut random = Random::new();
         Self {
             instrument_type: instrument_type,
+            spectrum_coeff: spectrum_coeff,
             volume: 1.0,
             frequency: 440.0,
             harmonics: false,
@@ -156,16 +163,16 @@ impl Instrument {
         if self.harmonics {
             c *= 2.0;
         }
-        let x = (self.last_note-self.instrument_type.lowest_note()) as f32 / (self.instrument_type.highest_note()-self.instrument_type.lowest_note()) as f32;
-        let decay_target;
-        if x > 0.5 {
-            decay_target = (1.0-self.volume)*(1.5-x);
-        }
-        else {
-            decay_target = 1.0-self.volume;
-        }
         match &self.last_articulation {
             Articulation::Pizzicato => {
+                let x = (self.last_note-self.instrument_type.lowest_note()) as f32 / (self.instrument_type.highest_note()-self.instrument_type.lowest_note()) as f32;
+                let decay_target;
+                if x > 0.5 {
+                    decay_target = (1.0-self.volume)*(1.5-x);
+                }
+                else {
+                    decay_target = 1.0-self.volume;
+                }
                 for i in 1..self.spectrum_size {
                     let decay = 1.0-decay_target*(i as f32/self.spectrum_size as f32);
                     let scale = c*decay*(1.0-i as f32/self.spectrum_size as f32).powi(20);
@@ -173,9 +180,24 @@ impl Instrument {
                 }
             }
             _ => {
+                // This is an empirical spectrum for the bow excitation, based on coefficients
+                // determined from fitting to samples.
+
+                let (m1, b1, m2, b2) = self.spectrum_coeff;
+                let decay_target = 0.7*(1.0-self.volume)*(1.0-self.volume);
                 for i in 1..self.spectrum_size {
-                    let decay = 1.0-decay_target*(i as f32/self.spectrum_size as f32);
-                    let scale = c*decay*(1.0-(i as f32-3.0).abs()/self.spectrum_size as f32).powi(20);
+                    let x = i as f32/self.spectrum_size as f32;
+                    let logx = x.ln();
+                    let y1 = f32::exp(-m1*logx + b1);
+                    let y2 = f32::exp(-m2*logx + b2);
+                    let decay;
+                    if x <= 0.2 {
+                        decay = 1.0-decay_target*x/0.2
+                    }
+                    else {
+                        decay = 1.0-decay_target*(1.0-x)/0.8;
+                    }
+                    let scale = c*decay*f32::min(y1, y2);
                     self.spectrum_buffer[i] += Complex::<f32>::new(scale*self.random.get_uniform(), scale*self.random.get_uniform());
                 }
             }
