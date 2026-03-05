@@ -163,15 +163,16 @@ impl Instrument {
         if self.harmonics {
             c *= 2.0;
         }
+        let volume = f32::min(1.0, self.volume);
         match &self.last_articulation {
             Articulation::Pizzicato => {
                 let x = (self.last_note-self.instrument_type.lowest_note()) as f32 / (self.instrument_type.highest_note()-self.instrument_type.lowest_note()) as f32;
                 let decay_target;
                 if x > 0.5 {
-                    decay_target = (1.0-self.volume)*(1.5-x);
+                    decay_target = (1.0-volume)*(1.5-x);
                 }
                 else {
-                    decay_target = 1.0-self.volume;
+                    decay_target = 1.0-volume;
                 }
                 for i in 1..self.spectrum_size {
                     let decay = 1.0-decay_target*(i as f32/self.spectrum_size as f32);
@@ -184,7 +185,7 @@ impl Instrument {
                 // determined from fitting to samples.
 
                 let (m1, b1, m2, b2) = self.spectrum_coeff;
-                let decay_target = 0.7*(1.0-self.volume)*(1.0-self.volume);
+                let decay_target = 0.7*(1.0-volume)*(1.0-volume);
                 for i in 1..self.spectrum_size {
                     let x = i as f32/self.spectrum_size as f32;
                     let logx = x.ln();
@@ -206,9 +207,10 @@ impl Instrument {
 
     /// Apply the filter to the spectrum buffer to damp the sound.
     fn apply_filter(&mut self) {
+        let s = if self.volume == 0.0 {0.2} else {0.15}; // Make the sound decay faster after the end of the note.
         for i in 1..self.spectrum_size {
             let f = i as f32/self.spectrum_size as f32;
-            let scale = 1.0-(0.07-0.06*(-8.0*f).exp())*(self.spectrum_size as f32).sqrt()*0.15;
+            let scale = 1.0-(0.07-0.06*(-8.0*f).exp())*(self.spectrum_size as f32).sqrt()*s;
             self.spectrum_buffer[i] *= scale;
         }
         if self.harmonics {

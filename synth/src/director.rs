@@ -17,6 +17,7 @@ use crate::instrument::Instrument;
 use crate::random::Random;
 use crate::reverb::Reverb;
 use crate::{InstrumentType, Articulation, SAMPLE_RATE};
+use crate::filter::{Filter, LowpassFilter};
 use std::f32::consts::PI;
 use std::sync::mpsc;
 use realfft::RealFftPlanner;
@@ -78,6 +79,9 @@ pub struct Director {
     highest_note: i32,
     random: Random,
     fft_planner: RealFftPlanner::<f32>,
+    left_filter: LowpassFilter,
+    right_filter: LowpassFilter,
+    apply_filter: bool,
     step: i64,
     steps_until_off: i32,
     transitions: Vec<Transition>,
@@ -114,6 +118,9 @@ impl Director {
             highest_note: 0,
             random: Random::new(),
             fft_planner: RealFftPlanner::<f32>::new(),
+            left_filter: LowpassFilter::new(6500.0),
+            right_filter: LowpassFilter::new(6500.0),
+            apply_filter: true,
             step: 0,
             steps_until_off: 0,
             transitions: vec![],
@@ -214,16 +221,18 @@ impl Director {
             Articulation::Arco => {
                 let attack_time = 1000+(20000.0*(1.0-velocity)) as i64;
                 self.add_envelope_transition(attack_time, 1.0);
+                self.apply_filter = true;
             }
             Articulation::Marcato => {
                 let attack_time = 1000+(5000.0*(1.0-velocity)) as i64;
-                let peak = 1.0+4.0*velocity;
+                let peak = 1.0+3.0*velocity;
                 self.add_envelope_transition(attack_time, peak);
                 self.add_transition(attack_time, 2*attack_time, TransitionData::EnvelopeChange {start_envelope: peak, end_envelope: 1.0});
+                self.apply_filter = true;
             }
             Articulation::Spiccato => {
                 let hold_time = 2750+(self.random.get_int()%500) as i64;
-                let peak = 0.05+5.0*velocity;
+                let peak = 0.05+4.0*velocity;
                 self.add_envelope_transition(0, peak);
                 self.add_transition(hold_time, 0, TransitionData::EnvelopeChange {start_envelope: peak, end_envelope: 0.0});
 
@@ -235,6 +244,7 @@ impl Director {
                     self.frequency[i] = start_frequency;
                 }
                 self.add_transition(0, 2000, TransitionData::FrequencyChange {start_frequency: start_frequency, end_frequency: end_frequency});
+                self.apply_filter = true;
             }
             Articulation::Pizzicato => {
                 let peak = 1.0+15.0*velocity;
@@ -251,6 +261,7 @@ impl Director {
                     self.frequency[i] = start_frequency;
                 }
                 self.add_transition(0, hold_time, TransitionData::FrequencyChange {start_frequency: start_frequency, end_frequency: end_frequency});
+                self.apply_filter = false;
             }
         }
         Ok(())
@@ -263,7 +274,7 @@ impl Director {
             Articulation::Spiccato => {}
             Articulation::Pizzicato => {}
             _ => {
-                let release_time = 1000 + (5000.0*(1.0-self.release_rate)) as i64;
+                let release_time = 1000 + (10000.0*(1.0-self.release_rate)) as i64;
                 self.add_envelope_transition(release_time, 0.0);
             }
         }
@@ -319,6 +330,10 @@ impl Director {
             let signal = self.instruments[i].generate(self.step, &mut self.fft_planner);
             left += self.instrument_pan[i].cos()*signal;
             right += self.instrument_pan[i].sin()*signal;
+        }
+        if self.apply_filter {
+            left = self.left_filter.process(left);
+            right = self.right_filter.process(right);
         }
         left += self.body_resonance*self.reverb[0].process(left);
         if self.reverb.len() == 1 {
@@ -430,6 +445,7 @@ impl Director {
         }
         if volume_changed {
             self.update_volume();
+            self.update_vibrato();
         }
         if frequency_changed {
             self.update_frequency();
@@ -456,9 +472,8 @@ impl Director {
 
     /// Update the vibrato of all Instruments.  This is called whenever the Director's vibrato is changed.
     fn update_vibrato(&mut self) {
-        let amplitude = 0.01*self.vibrato;
-        for instrument in &mut self.instruments.iter_mut() {
-            instrument.set_vibrato_amplitude(amplitude);
+        for i in 0..self.instruments.len() {
+            self.instruments[i].set_vibrato_amplitude(0.01*self.vibrato*self.envelope[i]);
         }
     }
 

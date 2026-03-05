@@ -15,6 +15,7 @@
 
 pub mod instrument;
 pub mod director;
+pub mod filter;
 pub mod random;
 pub mod resampler;
 pub mod reverb;
