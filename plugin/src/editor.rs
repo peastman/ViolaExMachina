@@ -115,6 +115,7 @@ fn draw_controls_panel(ui: &mut egui::Ui, params: &Arc<ViolaExMachinaParams>, se
             ui.selectable_value(&mut new_articulation, Articulation::Marcato, "Marcato");
             ui.selectable_value(&mut new_articulation, Articulation::Spiccato, "Spiccato");
             ui.selectable_value(&mut new_articulation, Articulation::Pizzicato, "Pizzicato");
+            ui.selectable_value(&mut new_articulation, Articulation::Tremolo, "Tremolo");
         });
         ui.end_row();
         if params.articulation.value() != new_articulation {
@@ -125,7 +126,8 @@ fn draw_controls_panel(ui: &mut egui::Ui, params: &Arc<ViolaExMachinaParams>, se
                 Articulation::Arco => synth::Articulation::Arco,
                 Articulation::Marcato => synth::Articulation::Marcato,
                 Articulation::Spiccato => synth::Articulation::Spiccato,
-                Articulation::Pizzicato => synth::Articulation::Pizzicato
+                Articulation::Pizzicato => synth::Articulation::Pizzicato,
+                Articulation::Tremolo => synth::Articulation::Tremolo
             };
             let _ = sender.lock().unwrap().send(Message::SetArticulation {articulation: articulation});
         };
@@ -162,7 +164,7 @@ fn draw_param_slider(ui: &mut egui::Ui, param: &FloatParam, setter: &ParamSetter
         ui.label(param.name());
     });
     let mut value = param.value();
-    if ui.add(egui::Slider::new(&mut value, 0.0..=1.0).handle_shape(egui::style::HandleShape::Circle)).changed() {
+    if ui.add(egui::Slider::new(&mut value, 0.0..=1.0).handle_shape(egui::style::HandleShape::Circle).max_decimals(3)).changed() {
         setter.begin_set_parameter(param);
         setter.set_parameter(param, value);
         setter.end_set_parameter(param);

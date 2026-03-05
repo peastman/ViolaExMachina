@@ -87,7 +87,9 @@ pub enum Articulation {
     #[id = "spiccato"]
     Spiccato,
     #[id = "pizzicato"]
-    Pizzicato
+    Pizzicato,
+    #[id = "tremolo"]
+    Tremolo
 }
 
 impl Default for ViolaExMachina {

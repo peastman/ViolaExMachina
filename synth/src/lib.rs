@@ -55,5 +55,6 @@ pub enum Articulation {
     Arco,
     Marcato,
     Spiccato,
-    Pizzicato
+    Pizzicato,
+    Tremolo
 }

@@ -89,6 +89,9 @@ pub struct Director {
     volume: f32,
     envelope: Vec<f32>,
     frequency: Vec<f32>,
+    tremolo_start: Vec<i64>,
+    tremolo_end: Vec<i64>,
+    tremolo_volume: Vec<f32>,
     bend: f32,
     vibrato: f32,
     bow_position: f32,
@@ -126,6 +129,9 @@ impl Director {
             volume: 1.0,
             envelope: vec![],
             frequency: vec![],
+            tremolo_start: vec![],
+            tremolo_end: vec![],
+            tremolo_volume: vec![],
             bend: 1.0,
             vibrato: 0.4,
             bow_position: 0.5,
@@ -158,6 +164,9 @@ impl Director {
         self.instrument_pan = vec![0.0; instrument_count];
         self.envelope = vec![0.0; instrument_count];
         self.frequency = vec![440.0; instrument_count];
+        self.tremolo_start = vec![0; instrument_count];
+        self.tremolo_end = vec![0; instrument_count];
+        self.tremolo_volume = vec![1.0; instrument_count];
         self.bend = 1.0;
         self.envelope_after_transitions = 0.0;
         self.frequency_after_transitions = 0.0;
@@ -213,8 +222,10 @@ impl Director {
         }
         match &self.articulation {
             Articulation::Arco => {
-                let attack_time = 1000+(20000.0*(1.0-velocity)) as i64;
-                self.add_envelope_transition(attack_time, 1.0);
+                let attack_time = 1000+(30000.0*(1.0-velocity)) as i64;
+                let start_envelope = 0.5*self.envelope[0];
+                self.add_envelope_transition(0, start_envelope);
+                self.add_transition(0, attack_time, TransitionData::EnvelopeChange {start_envelope: start_envelope, end_envelope: 1.0});
                 self.apply_filter = true;
             }
             Articulation::Marcato => {
@@ -256,6 +267,15 @@ impl Director {
                 }
                 self.add_transition(0, hold_time, TransitionData::FrequencyChange {start_frequency: start_frequency, end_frequency: end_frequency});
                 self.apply_filter = false;
+            }
+            Articulation::Tremolo => {
+                self.add_envelope_transition(0, 1.0);
+                for i in 0..self.tremolo_start.len() {
+                    self.tremolo_start[i] = self.step;
+                    self.tremolo_end[i] = self.step + 6000 + self.random.get_int() as i64%2000;
+                    self.tremolo_volume[i] = 1.0 + self.random.get_uniform();
+                }
+                self.apply_filter = true;
             }
         }
         Ok(())
@@ -430,6 +450,9 @@ impl Director {
                 }
             }
         }
+        if let Articulation::Tremolo {} = &self.articulation {
+            volume_changed = true;
+        }
         if volume_changed {
             self.update_volume();
             self.update_vibrato();
@@ -445,7 +468,25 @@ impl Director {
     fn update_volume(&mut self) {
         let actual_volume = 0.05+0.95*self.volume;
         for i in 0..self.instruments.len() {
-            self.instruments[i].set_volume(actual_volume*self.envelope[i]);
+            let mut vol = actual_volume*self.envelope[i];
+            if let Articulation::Tremolo {} = &self.articulation {
+                // When playing tremolo, the volume needs to change continuously.
+
+                if self.step > self.tremolo_end[i] {
+                    vol = 0.0;
+                    self.tremolo_start[i] = self.step+1000;
+                    self.tremolo_end[i] = self.tremolo_start[i] + 4000 + self.random.get_int() as i64 % 1000;
+                    self.tremolo_volume[i] = 1.0 + self.random.get_uniform();
+                }
+                else if self.step < self.tremolo_start[i] {
+                    vol = 0.0;
+                }
+                else {
+                    let x = (self.tremolo_end[i]-self.step) as f32 / (self.tremolo_end[i]-self.tremolo_start[i]) as f32;
+                    vol *= self.tremolo_volume[i]*(1.0-(1.5*(x-0.3)).abs());
+                }
+            }
+            self.instruments[i].set_volume(vol);
         }
     }
 
