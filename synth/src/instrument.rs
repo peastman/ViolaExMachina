@@ -29,13 +29,13 @@ pub struct Instrument {
     spectrum_coeff: (f32, f32, f32, f32),
     volume: f32,
     frequency: f32,
+    bow_position: f32,
     harmonics: bool,
     vibrato_low_frequency: f32,
     vibrato_high_frequency: f32,
     vibrato_amplitude: f32,
     vibrato_frequency_drift_amplitude: f32,
     vibrato_amplitude_drift_amplitude: f32,
-    tremolo_amplitude: f32,
     vibrato_phase: f32,
     vibrato_amplitude_drift: f32,
     spectrum_buffer: Vec<Complex<f32>>,
@@ -87,13 +87,13 @@ impl Instrument {
             spectrum_coeff: spectrum_coeff,
             volume: 1.0,
             frequency: 440.0,
+            bow_position: 0.5,
             harmonics: false,
             vibrato_low_frequency: vibrato_low_frequency,
             vibrato_high_frequency: vibrato_high_frequency,
             vibrato_amplitude: 0.0,
             vibrato_frequency_drift_amplitude: 0.05,
             vibrato_amplitude_drift_amplitude: 0.4,
-            tremolo_amplitude: 0.0,
             vibrato_phase: 0.3*index as f32,
             vibrato_amplitude_drift: random.get_normal(),
             spectrum_buffer: vec![],
@@ -132,24 +132,18 @@ impl Instrument {
         self.volume = volume;
     }
 
-    /// Set the frequency of the glottal excitation (in Hz).
+    /// Set the frequency of the string (in Hz).
     pub fn set_frequency(&mut self, frequency: f32) {
         self.frequency = frequency;
     }
 
-    /// Set the amplitude of the bow noise.
-    pub fn set_noise(&mut self, noise: f32) {
-        // self.glottis.noise = noise;
+    /// Set the bow position along the string.
+    pub fn set_bow_position(&mut self, bow_position: f32) {
+        self.bow_position = bow_position;
     }
-
     /// Set the amplitude of vibrato.
     pub fn set_vibrato_amplitude(&mut self, amplitude: f32) {
         self.vibrato_amplitude = amplitude;
-    }
-
-    /// Set the amplitude of tremolo.
-    pub fn set_tremolo_amplitude(&mut self, amplitude: f32) {
-        self.tremolo_amplitude = amplitude;
     }
 
     /// Set whether harmonics are enabled.
@@ -162,6 +156,17 @@ impl Instrument {
         let mut c = self.volume/(self.spectrum_size as f32).sqrt();
         if self.harmonics {
             c *= 2.0;
+        }
+        if self.bow_position != 0.5 {
+            // For extreme bow positions, the volume should become quieter and more variable.
+
+            let scale = 1.0 - 1.7*self.random.get_uniform()*(0.5-self.bow_position).abs();
+            c *= scale*scale;
+            if self.bow_position > 0.5 {
+                // Without this, sul tasto gets a little too quiet.
+
+                c *= 1.0+0.2*(self.bow_position-0.5);
+            }
         }
         let volume = f32::min(1.0, self.volume);
         match &self.last_articulation {
@@ -191,12 +196,25 @@ impl Instrument {
                     let logx = x.ln();
                     let y1 = f32::exp(-m1*logx + b1);
                     let y2 = f32::exp(-m2*logx + b2);
-                    let decay;
+                    let mut decay;
                     if x <= 0.2 {
                         decay = 1.0-decay_target*x/0.2
                     }
                     else {
                         decay = 1.0-decay_target*(1.0-x)/0.8;
+                    }
+                    if self.bow_position > 0.5 {
+                        // For sul tasto, reduce the high frequencies.
+
+                        decay *= (-18.0*x*(self.bow_position-0.5)).exp();
+                    }
+                    else if self.bow_position < 0.5 {
+                        // For sul ponticello, increase the high frequencies and reduce the fundamental.
+
+                        decay *= (10.0*(x-0.5)*(x-0.5)*(0.5-self.bow_position)).exp();
+                        if i == 1 {
+                            decay *= 0.05+1.9*self.bow_position;
+                        }
                     }
                     let scale = c*decay*f32::min(y1, y2);
                     self.spectrum_buffer[i] += Complex::<f32>::new(scale*self.random.get_uniform(), scale*self.random.get_uniform());

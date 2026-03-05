@@ -32,9 +32,7 @@ pub enum Message {
     SetVolume {volume: f32},
     SetPitchBend {semitones: f32},
     SetVibrato {vibrato: f32},
-    SetIntensity {intensity: f32},
-    SetBrightness {brightness: f32},
-    SetAttackRate {attack: f32},
+    SetBowPosition {bow_position: f32},
     SetReleaseRate {release: f32},
     SetHarmonics {harmonics: bool},
     SetStereoWidth {width: f32},
@@ -93,9 +91,7 @@ pub struct Director {
     frequency: Vec<f32>,
     bend: f32,
     vibrato: f32,
-    intensity: f32,
-    brightness: f32,
-    attack_rate: f32,
+    bow_position: f32,
     release_rate: f32,
     body_resonance: f32,
     harmonics: bool,
@@ -132,9 +128,7 @@ impl Director {
             frequency: vec![],
             bend: 1.0,
             vibrato: 0.4,
-            intensity: 0.5,
-            brightness: 1.0,
-            attack_rate: 0.8,
+            bow_position: 0.5,
             release_rate: 0.5,
             body_resonance: 0.1,
             harmonics: false,
@@ -199,7 +193,7 @@ impl Director {
         self.update_harmonics();
         self.update_volume();
         self.update_frequency();
-        self.update_sound();
+        self.update_bow_position();
         self.update_instrument_delays();
     }
 
@@ -368,7 +362,6 @@ impl Director {
                         Message::SetVolume {volume} => {
                             self.volume = volume;
                             self.update_volume();
-                            self.update_sound();
                         }
                         Message::SetArticulation {articulation} => {
                             self.articulation = articulation;
@@ -381,15 +374,9 @@ impl Director {
                             self.vibrato = vibrato;
                             self.update_vibrato();
                         }
-                        Message::SetIntensity {intensity} => {
-                            self.intensity = intensity;
-                            self.update_sound();
-                        }
-                        Message::SetBrightness {brightness} => {
-                            self.brightness = brightness;
-                        }
-                        Message::SetAttackRate {attack} => {
-                            self.attack_rate = attack;
+                        Message::SetBowPosition {bow_position} => {
+                            self.bow_position = bow_position;
+                            self.update_bow_position();
                         }
                         Message::SetReleaseRate {release} => {
                             self.release_rate = release;
@@ -470,6 +457,12 @@ impl Director {
         }
     }
 
+    /// Update the bow position of all Instruments.  This is called whenever the Director's bow position is changed.
+    fn update_bow_position(&mut self) {
+        for i in 0..self.instruments.len() {
+            self.instruments[i].set_bow_position(self.bow_position);
+        }
+    }
     /// Update the vibrato of all Instruments.  This is called whenever the Director's vibrato is changed.
     fn update_vibrato(&mut self) {
         for i in 0..self.instruments.len() {
@@ -481,16 +474,6 @@ impl Director {
     fn update_harmonics(&mut self) {
         for instrument in &mut self.instruments.iter_mut() {
             instrument.set_harmonics(self.harmonics);
-        }
-    }
-    /// Update Rd and noise amplitude for all instruments.  They depend on the volume and the note
-    /// being played.
-    fn update_sound(&mut self) {
-        let noise = 0.05*(1.0-self.volume)*(1.0-self.volume);
-        let tremolo = 0.2*self.intensity;
-        for instrument in &mut self.instruments {
-            instrument.set_noise(noise);
-            instrument.set_tremolo_amplitude(tremolo);
         }
     }
 

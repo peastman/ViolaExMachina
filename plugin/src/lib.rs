@@ -33,9 +33,7 @@ pub struct ViolaExMachina {
     last_note: u8,
     last_dynamics: f32,
     last_vibrato: f32,
-    last_intensity: f32,
-    last_brightness: f32,
-    last_attack_rate: f32,
+    last_bow_position: f32,
     last_release_rate: f32,
     last_stereo_width: f32,
     last_time_spread: i32,
@@ -56,12 +54,8 @@ struct ViolaExMachinaParams {
     pub dynamics: FloatParam,
     #[id = "vibrato"]
     pub vibrato: FloatParam,
-    #[id = "intensity"]
-    pub intensity: FloatParam,
-    #[id = "brightness"]
-    pub brightness: FloatParam,
-    #[id = "attack_rate"]
-    pub attack_rate: FloatParam,
+    #[id = "bow_position"]
+    pub bow_position: FloatParam,
     #[id = "release_rate"]
     pub release_rate: FloatParam,
     #[id = "stereo_width"]
@@ -110,9 +104,7 @@ impl Default for ViolaExMachina {
             last_note: 255,
             last_dynamics: -1.0,
             last_vibrato: -1.0,
-            last_intensity: -1.0,
-            last_brightness: -1.0,
-            last_attack_rate: -1.0,
+            last_bow_position: -1.0,
             last_release_rate: -1.0,
             last_stereo_width: -1.0,
             last_time_spread: -1,
@@ -130,9 +122,7 @@ impl Default for ViolaExMachinaParams {
             articulation: EnumParam::new("Articulation", Articulation::Arco),
             dynamics: FloatParam::new("Dynamics", 1.0, FloatRange::Linear {min: 0.0, max: 1.0}),
             vibrato: FloatParam::new("Vibrato", 0.4, FloatRange::Linear {min: 0.0, max: 1.0}),
-            intensity: FloatParam::new("Intensity", 0.5, FloatRange::Linear {min: 0.0, max: 1.0}),
-            brightness: FloatParam::new("Brightness", 1.0, FloatRange::Linear {min: 0.0, max: 1.0}),
-            attack_rate: FloatParam::new("Attack Rate", 0.75, FloatRange::Linear {min: 0.0, max: 1.0}),
+            bow_position: FloatParam::new("Bow Position", 0.5, FloatRange::Linear {min: 0.0, max: 1.0}),
             release_rate: FloatParam::new("Release Rate", 0.5, FloatRange::Linear {min: 0.0, max: 1.0}),
             stereo_width: FloatParam::new("Stereo Width", 0.7, FloatRange::Linear {min: 0.0, max: 1.0}),
             time_spread: IntParam::new("Time Spread", 50, IntRange::Linear {min: 0, max: 100}),
@@ -198,17 +188,9 @@ impl Plugin for ViolaExMachina {
             self.last_vibrato = self.params.vibrato.value();
             let _ = sender.send(Message::SetVibrato {vibrato: self.last_vibrato});
         }
-        if self.last_intensity != self.params.intensity.value() {
-            self.last_intensity = self.params.intensity.value();
-            let _ = sender.send(Message::SetIntensity {intensity: self.last_intensity});
-        }
-        if self.last_brightness != self.params.brightness.value() {
-            self.last_brightness = self.params.brightness.value();
-            let _ = sender.send(Message::SetBrightness {brightness: self.last_brightness});
-        }
-        if self.last_attack_rate != self.params.attack_rate.value() {
-            self.last_attack_rate = self.params.attack_rate.value();
-            let _ = sender.send(Message::SetAttackRate {attack: self.last_attack_rate});
+        if self.last_bow_position != self.params.bow_position.value() {
+            self.last_bow_position = self.params.bow_position.value();
+            let _ = sender.send(Message::SetBowPosition {bow_position: self.last_bow_position});
         }
         if self.last_release_rate != self.params.release_rate.value() {
             self.last_release_rate = self.params.release_rate.value();

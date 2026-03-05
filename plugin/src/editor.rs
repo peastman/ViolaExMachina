@@ -135,9 +135,7 @@ fn draw_controls_panel(ui: &mut egui::Ui, params: &Arc<ViolaExMachinaParams>, se
         ui.spacing_mut().slider_width = 200.0;
         draw_param_slider(ui, &params.dynamics, setter);
         draw_param_slider(ui, &params.vibrato, setter);
-        draw_param_slider(ui, &params.intensity, setter);
-        draw_param_slider(ui, &params.brightness, setter);
-        draw_param_slider(ui, &params.attack_rate, setter);
+        draw_param_slider(ui, &params.bow_position, setter);
         draw_param_slider(ui, &params.release_rate, setter);
         draw_param_slider(ui, &params.stereo_width, setter);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
