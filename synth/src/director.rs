@@ -17,7 +17,7 @@ use crate::instrument::Instrument;
 use crate::random::Random;
 use crate::reverb::Reverb;
 use crate::{InstrumentType, Articulation, SAMPLE_RATE};
-use crate::filter::{Filter, LowpassFilter};
+use crate::filter::{Filter, LowpassFilter, ResonantFilter};
 use std::f32::consts::PI;
 use std::sync::mpsc;
 use realfft::RealFftPlanner;
@@ -33,11 +33,11 @@ pub enum Message {
     SetPitchBend {semitones: f32},
     SetVibrato {vibrato: f32},
     SetBowPosition {bow_position: f32},
+    SetBowNoise {bow_noise: f32},
     SetReleaseRate {release: f32},
     SetHarmonics {harmonics: bool},
     SetStereoWidth {width: f32},
-    SetMaxInstrumentDelay {max_delay: i64},
-    SetRandomize {randomize: f32}
+    SetMaxInstrumentDelay {max_delay: i64}
 }
 
 /// A Transition describes some type of continuous change to the instruments.  It specifies the time
@@ -96,6 +96,8 @@ pub struct Director {
     vibrato: f32,
     bow_position: f32,
     release_rate: f32,
+    bow_noise: f32,
+    bow_noise_scale: f32,
     body_resonance: f32,
     harmonics: bool,
     envelope_after_transitions: f32,
@@ -104,7 +106,9 @@ pub struct Director {
     stereo_width: f32,
     instrument_pan: Vec<f32>,
     reverb: Vec<Reverb>,
-    randomize: f32
+    noise_buffer: Vec<f32>,
+    noise_position: Vec<usize>,
+    noise_filter: Vec<ResonantFilter>
 }
 
 impl Director {
@@ -136,6 +140,8 @@ impl Director {
             vibrato: 0.4,
             bow_position: 0.5,
             release_rate: 0.5,
+            bow_noise: 0.5,
+            bow_noise_scale: 1.0,
             body_resonance: 0.1,
             harmonics: false,
             envelope_after_transitions: 0.0,
@@ -144,7 +150,9 @@ impl Director {
             stereo_width: 0.3,
             instrument_pan: vec![],
             reverb: vec![],
-            randomize: 0.1
+            noise_buffer: parse_flac(include_bytes!("data/bow_noise.flac")),
+            noise_position: vec![],
+            noise_filter: vec![]
         };
         result.initialize_instruments(instrument_type, instrument_count);
         result
@@ -174,16 +182,20 @@ impl Director {
         self.highest_note = instrument_type.highest_note();
         match instrument_type {
             InstrumentType::Violin => {
+                self.bow_noise_scale = 1.0;
                 self.body_resonance = 0.18;
             }
             InstrumentType::Viola => {
+                self.bow_noise_scale = 0.6;
                 self.body_resonance = 0.18;
             }
             InstrumentType::Cello => {
+                self.bow_noise_scale = 0.6;
                 self.body_resonance = 0.35;
             }
             InstrumentType::Bass => {
-                self.body_resonance = 0.5;
+                self.bow_noise_scale = 0.7;
+                self.body_resonance = 0.4;
             }
         }
         let ir = match instrument_type {
@@ -197,6 +209,11 @@ impl Director {
         if instrument_count > 1 {
             self.reverb.push(Reverb::new(&ir, &mut self.fft_planner));
         }
+        self.noise_position = vec![0; instrument_count];
+        for i in 0..instrument_count {
+            self.noise_position[i] = (self.noise_buffer.len() as f32*(i as f32+0.5*self.random.get_uniform())/instrument_count as f32) as usize;
+        }
+        self.noise_filter = vec![ResonantFilter::new(100.0, 100.0); instrument_count];
         self.update_pan_positions();
         self.update_vibrato();
         self.update_harmonics();
@@ -214,7 +231,9 @@ impl Director {
             return Ok(());
         }
         for i in 0..self.envelope.len() {
-            self.frequency[i] = 440.0 * f32::powf(2.0, (note_index-69) as f32/12.0);
+            let freq = 440.0 * f32::powf(2.0, (note_index-69) as f32/12.0);
+            self.frequency[i] = freq;
+            self.noise_filter[i] = ResonantFilter::new(2.0*freq, freq);
         }
         self.update_frequency();
         for instrument in &mut self.instruments {
@@ -272,7 +291,7 @@ impl Director {
                 self.add_envelope_transition(0, 1.0);
                 for i in 0..self.tremolo_start.len() {
                     self.tremolo_start[i] = self.step;
-                    self.tremolo_end[i] = self.step + 6000 + self.random.get_int() as i64%2000;
+                    self.tremolo_end[i] = self.step + 3000 + self.random.get_int() as i64%500;
                     self.tremolo_volume[i] = 1.0 + self.random.get_uniform();
                 }
                 self.apply_filter = true;
@@ -341,7 +360,10 @@ impl Director {
         let mut left = 0.0;
         let mut right = 0.0;
         for i in 0..self.instruments.len() {
-            let signal = self.instruments[i].generate(self.step, &mut self.fft_planner);
+            let mut noise = self.bow_noise_scale*self.bow_noise*self.instruments[i].get_volume()*self.noise_buffer[self.noise_position[i]];
+            noise += 5e-5*self.frequency[i]*self.noise_filter[i].process(noise);
+            let signal = self.instruments[i].generate(self.step, &mut self.fft_planner) + noise;
+            self.noise_position[i] = (self.noise_position[i]+1)%self.noise_buffer.len();
             left += self.instrument_pan[i].cos()*signal;
             right += self.instrument_pan[i].sin()*signal;
         }
@@ -398,6 +420,9 @@ impl Director {
                             self.bow_position = bow_position;
                             self.update_bow_position();
                         }
+                        Message::SetBowNoise {bow_noise} => {
+                            self.bow_noise = bow_noise;
+                        }
                         Message::SetReleaseRate {release} => {
                             self.release_rate = release;
                         }
@@ -412,9 +437,6 @@ impl Director {
                         Message::SetMaxInstrumentDelay {max_delay} => {
                             self.max_instrument_delay = max_delay;
                             self.update_instrument_delays();
-                        }
-                        Message::SetRandomize {randomize} => {
-                            self.randomize = randomize;
                         }
                     }
                 }
@@ -474,8 +496,8 @@ impl Director {
 
                 if self.step > self.tremolo_end[i] {
                     vol = 0.0;
-                    self.tremolo_start[i] = self.step+1000;
-                    self.tremolo_end[i] = self.tremolo_start[i] + 4000 + self.random.get_int() as i64 % 1000;
+                    self.tremolo_start[i] = self.step+2000;
+                    self.tremolo_end[i] = self.tremolo_start[i] + 3000 + self.random.get_int() as i64 % 500;
                     self.tremolo_volume[i] = 1.0 + self.random.get_uniform();
                 }
                 else if self.step < self.tremolo_start[i] {
@@ -483,7 +505,7 @@ impl Director {
                 }
                 else {
                     let x = (self.tremolo_end[i]-self.step) as f32 / (self.tremolo_end[i]-self.tremolo_start[i]) as f32;
-                    vol *= self.tremolo_volume[i]*(1.0-(1.5*(x-0.3)).abs());
+                   vol *= self.tremolo_volume[i]*(1.0-(1.5*(x-0.3)).abs());
                 }
             }
             self.instruments[i].set_volume(vol);

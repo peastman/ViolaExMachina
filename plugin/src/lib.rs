@@ -34,6 +34,7 @@ pub struct ViolaExMachina {
     last_dynamics: f32,
     last_vibrato: f32,
     last_bow_position: f32,
+    last_bow_noise: f32,
     last_release_rate: f32,
     last_stereo_width: f32,
     last_time_spread: i32,
@@ -56,6 +57,8 @@ struct ViolaExMachinaParams {
     pub vibrato: FloatParam,
     #[id = "bow_position"]
     pub bow_position: FloatParam,
+    #[id = "bow_noise"]
+    pub bow_noise: FloatParam,
     #[id = "release_rate"]
     pub release_rate: FloatParam,
     #[id = "stereo_width"]
@@ -107,6 +110,7 @@ impl Default for ViolaExMachina {
             last_dynamics: -1.0,
             last_vibrato: -1.0,
             last_bow_position: -1.0,
+            last_bow_noise: -1.0,
             last_release_rate: -1.0,
             last_stereo_width: -1.0,
             last_time_spread: -1,
@@ -125,6 +129,7 @@ impl Default for ViolaExMachinaParams {
             dynamics: FloatParam::new("Dynamics", 1.0, FloatRange::Linear {min: 0.0, max: 1.0}),
             vibrato: FloatParam::new("Vibrato", 0.4, FloatRange::Linear {min: 0.0, max: 1.0}),
             bow_position: FloatParam::new("Bow Position", 0.5, FloatRange::Linear {min: 0.0, max: 1.0}),
+            bow_noise: FloatParam::new("Bow Noise", 0.5, FloatRange::Linear {min: 0.0, max: 1.0}),
             release_rate: FloatParam::new("Release Rate", 0.5, FloatRange::Linear {min: 0.0, max: 1.0}),
             stereo_width: FloatParam::new("Stereo Width", 0.7, FloatRange::Linear {min: 0.0, max: 1.0}),
             time_spread: IntParam::new("Time Spread", 50, IntRange::Linear {min: 0, max: 100}),
@@ -193,6 +198,10 @@ impl Plugin for ViolaExMachina {
         if self.last_bow_position != self.params.bow_position.value() {
             self.last_bow_position = self.params.bow_position.value();
             let _ = sender.send(Message::SetBowPosition {bow_position: self.last_bow_position});
+        }
+        if self.last_bow_noise != self.params.bow_noise.value() {
+            self.last_bow_noise = self.params.bow_noise.value();
+            let _ = sender.send(Message::SetBowNoise {bow_noise: self.last_bow_noise});
         }
         if self.last_release_rate != self.params.release_rate.value() {
             self.last_release_rate = self.params.release_rate.value();
