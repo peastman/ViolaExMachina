@@ -51,7 +51,8 @@ pub struct Instrument {
     decaying_notes: Vec<DecayingNote>,
     start_new_note: bool,
     last_note: i32,
-    last_articulation: Articulation
+    last_articulation: Articulation,
+    last_volume: f32
 }
 
 impl Instrument {
@@ -109,7 +110,8 @@ impl Instrument {
             decaying_notes: vec![],
             start_new_note: false,
             last_note: 0,
-            last_articulation: Articulation::Arco
+            last_articulation: Articulation::Arco,
+            last_volume: 0.0
         }
     }
 
@@ -273,13 +275,15 @@ impl Instrument {
             let vibrato_amplitude = self.vibrato_amplitude * (1.0+self.vibrato_amplitude_drift_amplitude*self.vibrato_amplitude_drift);
 
             // Compute the instantaneous frequency.  This depends on the primary frequency of the note
-            // and vibrato.
+            // and vibrato.  It also increases slightly whenever the volume is increasing.
 
+            let freq_boost = f32::max(0.0, self.volume-self.last_volume);
+            self.last_volume = self.volume;
             let vibrato_offset = vibrato_freq*self.period / SAMPLE_RATE as f32;
             self.vibrato_phase = (self.vibrato_phase+vibrato_offset) % 4.0;
             let vibrato = (2.0*PI*self.vibrato_phase).sin();
             let vibrato = vibrato*vibrato*vibrato;
-            let current_frequency = self.frequency * (1.0+vibrato_amplitude*vibrato);
+            let current_frequency = self.frequency * (1.0 + vibrato_amplitude*vibrato + 0.15*freq_boost);
 
             // Update the buffer sizes.
 

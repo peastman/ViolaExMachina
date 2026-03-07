@@ -92,6 +92,9 @@ pub struct Director {
     tremolo_start: Vec<i64>,
     tremolo_end: Vec<i64>,
     tremolo_volume: Vec<f32>,
+    tremolo_down_bow: Vec<bool>,
+    tremolo_length: i64,
+    tremolo_space: i64,
     bend: f32,
     vibrato: f32,
     bow_position: f32,
@@ -136,6 +139,9 @@ impl Director {
             tremolo_start: vec![],
             tremolo_end: vec![],
             tremolo_volume: vec![],
+            tremolo_down_bow: vec![],
+            tremolo_length: 3000,
+            tremolo_space: 1000,
             bend: 1.0,
             vibrato: 0.4,
             bow_position: 0.5,
@@ -175,6 +181,7 @@ impl Director {
         self.tremolo_start = vec![0; instrument_count];
         self.tremolo_end = vec![0; instrument_count];
         self.tremolo_volume = vec![1.0; instrument_count];
+        self.tremolo_down_bow = vec![true; instrument_count];
         self.bend = 1.0;
         self.envelope_after_transitions = 0.0;
         self.frequency_after_transitions = 0.0;
@@ -184,18 +191,26 @@ impl Director {
             InstrumentType::Violin => {
                 self.bow_noise_scale = 1.0;
                 self.body_resonance = 0.18;
+                self.tremolo_length = 3500;
+                self.tremolo_space = 1000;
             }
             InstrumentType::Viola => {
                 self.bow_noise_scale = 0.6;
                 self.body_resonance = 0.18;
+                self.tremolo_length = 4000;
+                self.tremolo_space = 1000;
             }
             InstrumentType::Cello => {
                 self.bow_noise_scale = 0.6;
                 self.body_resonance = 0.35;
+                self.tremolo_length = 4800;
+                self.tremolo_space = 1200;
             }
             InstrumentType::Bass => {
                 self.bow_noise_scale = 0.7;
                 self.body_resonance = 0.4;
+                self.tremolo_length = 5000;
+                self.tremolo_space = 1500;
             }
         }
         let ir = match instrument_type {
@@ -291,8 +306,9 @@ impl Director {
                 self.add_envelope_transition(0, 1.0);
                 for i in 0..self.tremolo_start.len() {
                     self.tremolo_start[i] = self.step;
-                    self.tremolo_end[i] = self.step + 3000 + self.random.get_int() as i64%500;
+                    self.tremolo_end[i] = self.step + self.tremolo_length + self.random.get_int() as i64%500;
                     self.tremolo_volume[i] = 1.0 + self.random.get_uniform();
+                    self.tremolo_down_bow[i] = true;
                 }
                 self.apply_filter = true;
             }
@@ -496,16 +512,20 @@ impl Director {
 
                 if self.step > self.tremolo_end[i] {
                     vol = 0.0;
-                    self.tremolo_start[i] = self.step+2000;
-                    self.tremolo_end[i] = self.tremolo_start[i] + 3000 + self.random.get_int() as i64 % 500;
+                    self.tremolo_start[i] = self.step+self.tremolo_space;
+                    self.tremolo_end[i] = self.tremolo_start[i] + self.tremolo_length + self.random.get_int() as i64 % 500;
                     self.tremolo_volume[i] = 1.0 + self.random.get_uniform();
+                    if !self.tremolo_down_bow[i] {
+                        self.tremolo_volume[i] *= 0.8;
+                    }
+                    self.tremolo_down_bow[i] = !self.tremolo_down_bow[i];
                 }
                 else if self.step < self.tremolo_start[i] {
                     vol = 0.0;
                 }
                 else {
                     let x = (self.tremolo_end[i]-self.step) as f32 / (self.tremolo_end[i]-self.tremolo_start[i]) as f32;
-                   vol *= self.tremolo_volume[i]*(1.0-(1.5*(x-0.3)).abs());
+                    vol *= self.tremolo_volume[i]*(1.0-(1.5*(x-0.3)).abs());
                 }
             }
             self.instruments[i].set_volume(vol);
