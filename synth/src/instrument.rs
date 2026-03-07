@@ -243,7 +243,7 @@ impl Instrument {
     }
 
     /// Generate the next audio sample.
-    pub fn generate(&mut self, step: i64, fft_planner: &mut RealFftPlanner::<f32>) -> f32 {
+    pub fn generate(&mut self, fft_planner: &mut RealFftPlanner::<f32>) -> f32 {
         let mut result = 0.0;
         if self.output_position >= self.output_size {
             if self.start_new_note {

@@ -56,12 +56,6 @@ enum TransitionData {
     FrequencyChange {start_frequency: f32, end_frequency: f32}
 }
 
-/// A note that is being sung.  It is described by the standard MIDI properties (note index
-/// and velocity), as well as the syllable to sing it on.
-struct Note {
-    note_index: i32
-}
-
 /// This is the main class you interact with when synthesizing audio.  A Director controls a set
 /// of Instruments, all of the same type, that play in unison.
 ///
@@ -83,7 +77,6 @@ pub struct Director {
     step: i64,
     steps_until_off: i32,
     transitions: Vec<Transition>,
-    current_note: Option<Note>,
     max_instrument_delay: i64,
     instrument_delays: Vec<i64>,
     volume: f32,
@@ -130,7 +123,6 @@ impl Director {
             step: 0,
             steps_until_off: 0,
             transitions: vec![],
-            current_note: None,
             max_instrument_delay: 2000,
             instrument_delays: vec![],
             volume: 1.0,
@@ -173,7 +165,6 @@ impl Director {
             self.instruments.push(Instrument::new(instrument_type, i));
         }
         self.transitions.clear();
-        self.current_note = None;
         self.instrument_delays = vec![0; instrument_count];
         self.instrument_pan = vec![0.0; instrument_count];
         self.envelope = vec![0.0; instrument_count];
@@ -378,7 +369,7 @@ impl Director {
         for i in 0..self.instruments.len() {
             let mut noise = self.bow_noise_scale*self.bow_noise*self.instruments[i].get_volume()*self.noise_buffer[self.noise_position[i]];
             noise += 5e-5*self.frequency[i]*self.noise_filter[i].process(noise);
-            let signal = self.instruments[i].generate(self.step, &mut self.fft_planner) + noise;
+            let signal = self.instruments[i].generate(&mut self.fft_planner) + noise;
             self.noise_position[i] = (self.noise_position[i]+1)%self.noise_buffer.len();
             left += self.instrument_pan[i].cos()*signal;
             right += self.instrument_pan[i].sin()*signal;

@@ -33,7 +33,7 @@ There are several additional parameters you can automate in a DAW to control the
   a mellow sound.  Values near the middle of the range correspond to normal bowing.
 - **Bow Noise**.  The amount of noise from the bow scraping the string.
 - **Release Rate**.  How quickly the sound stops at the end of a note.
-- **Stereo Width**.  How widely the instruments are spread out in space.
+- **Stereo Width**.  How widely the instruments in the ensemble are spread out in space.
 - **Time Spread**.  The amount of delay between instruments in the ensemble.
 - **Harmonics**.  The player fingers each note as usual, but uses a second finger to lightly touch
   the string 1/4 of the way along its length.  This damps all frequencies that do not have a node
