@@ -46,6 +46,7 @@ pub fn draw_editor(params: Arc<ViolaExMachinaParams>, sender: Arc<Mutex<mpsc::Se
         Default::default(),
         |_, _, _| {},
         move |ctx, setter, _queue, _state| {
+            egui_extras::install_image_loaders(&ctx);
             egui::CentralPanel::default().show(ctx, |ui| {
                 egui::SidePanel::left("tabs").max_width(100.0).resizable(false).show_inside(ui, |ui| {
                     let mut state = state.lock().unwrap();
@@ -53,7 +54,23 @@ pub fn draw_editor(params: Arc<ViolaExMachinaParams>, sender: Arc<Mutex<mpsc::Se
                         ui.selectable_value(&mut state.current_panel, Panel::Controls, "Controls");
                         ui.selectable_value(&mut state.current_panel, Panel::Help, "Help");
                         ui.selectable_value(&mut state.current_panel, Panel::About, "About");
-                    })
+                    });
+                    ui.with_layout(egui::Layout::bottom_up(egui::Align::BOTTOM), |ui| {
+                        match params.instrument_type.value() {
+                            InstrumentType::Violin => {
+                                ui.image(egui::include_image!("violin.png"));
+                            }
+                            InstrumentType::Viola => {
+                                ui.image(egui::include_image!("viola.png"));
+                            }
+                            InstrumentType::Cello => {
+                                ui.image(egui::include_image!("cello.png"));
+                            }
+                            InstrumentType::Bass => {
+                                ui.image(egui::include_image!("bass.png"));
+                            }
+                        }
+                    });
                 });
                 egui::CentralPanel::default().show_inside(ui, |ui| {
                     let state = state.lock().unwrap();

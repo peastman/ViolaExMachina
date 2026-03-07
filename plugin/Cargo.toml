@@ -12,8 +12,9 @@ crate-type = ["cdylib", "lib"]
 synth = { path = "../synth" }
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "28b149ec4d62757d0b448809148a0c3ca6e09a95", features = ["standalone"] }
 nih_plug_egui = { git = "https://codeberg.org/BillyDM/egui-baseview", branch = "egui_33" }
-egui_extras = "0.33.0"
+egui_extras = { version = "0.33.0", features = ["default", "all_loaders"] }
 egui_commonmark = "0.22.0"
+image = { version = "0.25.9", features = ["png"] }
 
 [profile.release]
 lto = "thin"
