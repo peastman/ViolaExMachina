@@ -3,7 +3,7 @@
 Viola Ex Machina is an open source, physically inspired synthesizer for stringed instruments:
 violin, viola, cello, and bass, both solo instruments and ensembles.
 
-The sound produced by Viola Ex Machina is completely dry.  It models only the singers, not
+The sound produced by Viola Ex Machina is completely dry.  It models only the instruments, not
 the room they are in.  To get a realistic sound, it is essential that you add an appropriate
 reverb.
 
@@ -13,7 +13,7 @@ Viola Ex Machina can be used as a VST3, CLAP, or AUv2 plugin.  [The Releases pag
 has compiled versions for Windows, Linux, and macOS.  If instead you want to build it from
 source, first install the [Rust compiler](https://www.rust-lang.org/).  To build the VST3 and CLAP
 plugins, execute the following command from this directory.
-w
+
 ```
 cargo xtask bundle viola_ex_machina --release
 ```
