@@ -174,6 +174,12 @@ fn draw_controls_panel(ui: &mut egui::Ui, params: &Arc<ViolaExMachinaParams>, se
             setter.set_parameter(&params.harmonics, harmonics);
             setter.end_set_parameter(&params.harmonics);
         }
+        let mut mute = params.mute.value();
+        if ui.checkbox(&mut mute, "Con Sordino").changed() {
+            setter.begin_set_parameter(&params.mute);
+            setter.set_parameter(&params.mute, mute);
+            setter.end_set_parameter(&params.mute);
+        }
     });
 }
 

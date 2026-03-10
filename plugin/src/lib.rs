@@ -38,7 +38,8 @@ pub struct ViolaExMachina {
     last_release_rate: f32,
     last_stereo_width: f32,
     last_time_spread: i32,
-    last_harmonics: bool
+    last_harmonics: bool,
+    last_mute: bool
 }
 
 #[derive(Params)]
@@ -66,7 +67,9 @@ struct ViolaExMachinaParams {
     #[id = "time_spread"]
     pub time_spread: IntParam,
     #[id = "harmonics"]
-    pub harmonics: BoolParam
+    pub harmonics: BoolParam,
+    #[id = "mute"]
+    pub mute: BoolParam
 }
 
 #[derive(Copy, Clone, Enum, Debug, PartialEq)]
@@ -114,7 +117,8 @@ impl Default for ViolaExMachina {
             last_release_rate: -1.0,
             last_stereo_width: -1.0,
             last_time_spread: -1,
-            last_harmonics: false
+            last_harmonics: false,
+            last_mute: false
         }
     }
 }
@@ -133,7 +137,8 @@ impl Default for ViolaExMachinaParams {
             release_rate: FloatParam::new("Release Rate", 0.5, FloatRange::Linear {min: 0.0, max: 1.0}),
             stereo_width: FloatParam::new("Stereo Width", 0.7, FloatRange::Linear {min: 0.0, max: 1.0}),
             time_spread: IntParam::new("Time Spread", 50, IntRange::Linear {min: 0, max: 100}),
-            harmonics: BoolParam::new("Harmonics", false)
+            harmonics: BoolParam::new("Harmonics", false),
+            mute: BoolParam::new("Con Sordino", false)
         };
         result
     }
@@ -218,6 +223,10 @@ impl Plugin for ViolaExMachina {
         if self.last_harmonics != self.params.harmonics.value() {
             self.last_harmonics = self.params.harmonics.value();
             let _ = sender.send(Message::SetHarmonics {harmonics: self.last_harmonics});
+        }
+        if self.last_mute != self.params.mute.value() {
+            self.last_mute = self.params.mute.value();
+            let _ = sender.send(Message::SetMute {mute: self.last_mute});
         }
         for (sample_id, channel_samples) in buffer.iter_samples().enumerate() {
             let mut send_note_off = false;

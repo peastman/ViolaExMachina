@@ -36,6 +36,7 @@ pub enum Message {
     SetBowNoise {bow_noise: f32},
     SetReleaseRate {release: f32},
     SetHarmonics {harmonics: bool},
+    SetMute {mute: bool},
     SetStereoWidth {width: f32},
     SetMaxInstrumentDelay {max_delay: i64}
 }
@@ -73,6 +74,8 @@ pub struct Director {
     fft_planner: RealFftPlanner::<f32>,
     left_filter: LowpassFilter,
     right_filter: LowpassFilter,
+    left_mute_filter: LowpassFilter,
+    right_mute_filter: LowpassFilter,
     apply_filter: bool,
     step: i64,
     steps_until_off: i32,
@@ -96,6 +99,7 @@ pub struct Director {
     bow_noise_scale: f32,
     body_resonance: f32,
     harmonics: bool,
+    mute: bool,
     envelope_after_transitions: f32,
     frequency_after_transitions: f32,
     message_receiver: mpsc::Receiver<Message>,
@@ -119,6 +123,8 @@ impl Director {
             fft_planner: RealFftPlanner::<f32>::new(),
             left_filter: LowpassFilter::new(6500.0),
             right_filter: LowpassFilter::new(6500.0),
+            left_mute_filter: LowpassFilter::new(1200.0),
+            right_mute_filter: LowpassFilter::new(1200.0),
             apply_filter: true,
             step: 0,
             steps_until_off: 0,
@@ -142,6 +148,7 @@ impl Director {
             bow_noise_scale: 1.0,
             body_resonance: 0.1,
             harmonics: false,
+            mute: false,
             envelope_after_transitions: 0.0,
             frequency_after_transitions: 0.0,
             message_receiver: message_receiver,
@@ -184,24 +191,32 @@ impl Director {
                 self.body_resonance = 0.18;
                 self.tremolo_length = 3500;
                 self.tremolo_space = 1000;
+                self.left_mute_filter = LowpassFilter::new(1200.0);
+                self.right_mute_filter = LowpassFilter::new(1200.0);
             }
             InstrumentType::Viola => {
                 self.bow_noise_scale = 0.6;
                 self.body_resonance = 0.18;
                 self.tremolo_length = 4000;
                 self.tremolo_space = 1000;
+                self.left_mute_filter = LowpassFilter::new(800.0);
+                self.right_mute_filter = LowpassFilter::new(800.0);
             }
             InstrumentType::Cello => {
                 self.bow_noise_scale = 0.6;
                 self.body_resonance = 0.35;
                 self.tremolo_length = 4800;
                 self.tremolo_space = 1200;
+                self.left_mute_filter = LowpassFilter::new(400.0);
+                self.right_mute_filter = LowpassFilter::new(400.0);
             }
             InstrumentType::Bass => {
                 self.bow_noise_scale = 0.7;
                 self.body_resonance = 0.4;
                 self.tremolo_length = 5000;
                 self.tremolo_space = 1500;
+                self.left_mute_filter = LowpassFilter::new(200.0);
+                self.right_mute_filter = LowpassFilter::new(200.0);
             }
         }
         let ir = match instrument_type {
@@ -378,12 +393,20 @@ impl Director {
             left = self.left_filter.process(left);
             right = self.right_filter.process(right);
         }
-        left += self.body_resonance*self.reverb[0].process(left);
+        let mut left_resonance = self.body_resonance*self.reverb[0].process(left);
+        if self.mute {
+            left_resonance = self.left_mute_filter.process(left_resonance);
+        }
+        left += left_resonance;
         if self.reverb.len() == 1 {
             right = left;
         }
         else {
-            right += self.body_resonance*self.reverb[1].process(right);
+            let mut right_resonance = self.body_resonance*self.reverb[1].process(right);
+            if self.mute {
+                right_resonance = self.right_mute_filter.process(right_resonance);
+            }
+            right += right_resonance;
         }
         if self.steps_until_off < 100 && (left.abs() > 0.001 || right.abs() > 0.001) {
             self.steps_until_off = 100;
@@ -436,6 +459,11 @@ impl Director {
                         Message::SetHarmonics {harmonics} => {
                             self.harmonics = harmonics;
                             self.update_harmonics();
+                        }
+                        Message::SetMute {mute} => {
+                            self.mute = mute;
+                            self.left_mute_filter.reset();
+                            self.right_mute_filter.reset();
                         }
                         Message::SetStereoWidth {width} => {
                             self.stereo_width = width;

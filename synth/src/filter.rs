@@ -37,6 +37,10 @@ impl LowpassFilter {
             y: 0.0
         }
     }
+
+    pub fn reset(&mut self) {
+        self.y = 0.0;
+    }
 }
 
 impl Filter for LowpassFilter {

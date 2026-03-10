@@ -38,3 +38,5 @@ There are several additional parameters you can automate in a DAW to control the
 - **Harmonics**.  The player fingers each note as usual, but uses a second finger to lightly touch
   the string 1/4 of the way along its length.  This damps all frequencies that do not have a node
   at that position, creating a thin sound two octaves higher than usual.
+- **Con Sordino**.  A concert mute is placed on the bridge, altering the tone color and making the
+  sound slightly quieter.
