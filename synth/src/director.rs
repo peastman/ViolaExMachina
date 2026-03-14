@@ -197,7 +197,7 @@ impl Director {
             InstrumentType::Viola => {
                 self.bow_noise_scale = 0.6;
                 self.body_resonance = 0.18;
-                self.tremolo_length = 4000;
+                self.tremolo_length = 3800;
                 self.tremolo_space = 1000;
                 self.left_mute_filter = LowpassFilter::new(800.0);
                 self.right_mute_filter = LowpassFilter::new(800.0);
@@ -205,16 +205,16 @@ impl Director {
             InstrumentType::Cello => {
                 self.bow_noise_scale = 0.6;
                 self.body_resonance = 0.35;
-                self.tremolo_length = 4800;
-                self.tremolo_space = 1200;
+                self.tremolo_length = 4000;
+                self.tremolo_space = 1000;
                 self.left_mute_filter = LowpassFilter::new(400.0);
                 self.right_mute_filter = LowpassFilter::new(400.0);
             }
             InstrumentType::Bass => {
                 self.bow_noise_scale = 0.7;
                 self.body_resonance = 0.4;
-                self.tremolo_length = 5000;
-                self.tremolo_space = 1500;
+                self.tremolo_length = 4500;
+                self.tremolo_space = 1000;
                 self.left_mute_filter = LowpassFilter::new(200.0);
                 self.right_mute_filter = LowpassFilter::new(200.0);
             }
@@ -361,7 +361,7 @@ impl Director {
     pub fn generate(&mut self) -> (f32, f32) {
         // Deal with the queues of Messages and Transitions.  This only needs to be done occassionally.
 
-        if self.step%200 == 0 {
+        if self.step%100 == 0 {
             self.process_messages();
             self.update_transitions();
         }
@@ -509,6 +509,7 @@ impl Director {
         }
         if let Articulation::Tremolo {} = &self.articulation {
             volume_changed = true;
+            frequency_changed = true;
         }
         if volume_changed {
             self.update_volume();
@@ -531,20 +532,23 @@ impl Director {
 
                 if self.step > self.tremolo_end[i] {
                     vol = 0.0;
-                    self.tremolo_start[i] = self.step+self.tremolo_space;
-                    self.tremolo_end[i] = self.tremolo_start[i] + self.tremolo_length + self.random.get_int() as i64 % 500;
                     self.tremolo_volume[i] = 1.0 + self.random.get_uniform();
                     if !self.tremolo_down_bow[i] {
-                        self.tremolo_volume[i] *= 0.8;
+                        self.tremolo_volume[i] *= 0.9;
+                        self.tremolo_start[i] = self.step+(0.8*self.tremolo_space as f32) as i64;
                     }
+                    else {
+                        self.tremolo_start[i] = self.step+self.tremolo_space;
+                    }
+                    self.tremolo_end[i] = self.tremolo_start[i] + self.tremolo_length + self.random.get_int() as i64 % 500;
                     self.tremolo_down_bow[i] = !self.tremolo_down_bow[i];
                 }
                 else if self.step < self.tremolo_start[i] {
                     vol = 0.0;
                 }
                 else {
-                    let x = (self.tremolo_end[i]-self.step) as f32 / (self.tremolo_end[i]-self.tremolo_start[i]) as f32;
-                    vol *= self.tremolo_volume[i]*(1.0-(1.5*(x-0.3)).abs());
+                    let x = (self.step-self.tremolo_start[i]) as f32 / (self.tremolo_end[i]-self.tremolo_start[i]) as f32;
+                    vol *= self.tremolo_volume[i]*3.0*(x-x*x);
                 }
             }
             self.instruments[i].set_volume(vol);
@@ -555,7 +559,22 @@ impl Director {
     /// pitch bend is changed.
     fn update_frequency(&mut self) {
         for i in 0..self.instruments.len() {
-            self.instruments[i].set_frequency(self.frequency[i]*self.bend);
+            let mut freq = self.frequency[i]*self.bend;
+            if let Articulation::Tremolo {} = &self.articulation {
+                // When playing tremolo, the frequency needs to change continuously.
+
+                let freq_delta = 0.02*freq*self.volume;
+                let low_freq = freq-0.5*freq_delta;
+                if self.step < self.tremolo_start[i] {
+                    let x = (self.tremolo_start[i]-self.step) as f32 / self.tremolo_space as f32;
+                    freq = low_freq+x*freq_delta;
+                }
+                else {
+                    let x = (self.step-self.tremolo_start[i]) as f32 / (self.tremolo_end[i]-self.tremolo_start[i]) as f32;
+                    freq = low_freq+x*freq_delta;
+                }
+            }
+            self.instruments[i].set_frequency(freq);
         }
     }
 

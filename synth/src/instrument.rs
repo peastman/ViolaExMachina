@@ -38,6 +38,7 @@ pub struct Instrument {
     vibrato_amplitude_drift_amplitude: f32,
     vibrato_phase: f32,
     vibrato_amplitude_drift: f32,
+    pizzicato_exponent: i32,
     spectrum_buffer: Vec<Complex<f32>>,
     spectrum_temp: Vec<Complex<f32>>,
     scratch: Vec<Complex<f32>>,
@@ -60,26 +61,31 @@ impl Instrument {
         let vibrato_low_frequency;
         let vibrato_high_frequency;
         let spectrum_coeff;
+        let pizzicato_exponent;
         match instrument_type {
             InstrumentType::Violin => {
                 vibrato_low_frequency = 5.15;
                 vibrato_high_frequency = 5.4;
                 spectrum_coeff = (0.23477698, -0.61536557, 1.79446171, -4.53092934);
+                pizzicato_exponent = 20;
             }
             InstrumentType::Viola => {
                 vibrato_low_frequency = 5.15;
                 vibrato_high_frequency = 5.4;
                 spectrum_coeff = (0.71382589, -2.82709236, 1.52126997, -4.04880334);
+                pizzicato_exponent = 20;
             }
             InstrumentType::Cello => {
                 vibrato_low_frequency = 5.0;
                 vibrato_high_frequency = 5.5;
                 spectrum_coeff = (0.12175271, -0.27890300, 3.28620357, -7.92322202);
+                pizzicato_exponent = 30;
             }
             InstrumentType::Bass => {
                 vibrato_low_frequency = 4.9;
                 vibrato_high_frequency = 5.4;
                 spectrum_coeff = (0.31336917, -0.99976244, 1.1930173, -4.76781326);
+                pizzicato_exponent = 40;
             }
         }
         let mut random = Random::new();
@@ -93,10 +99,11 @@ impl Instrument {
             vibrato_low_frequency: vibrato_low_frequency,
             vibrato_high_frequency: vibrato_high_frequency,
             vibrato_amplitude: 0.0,
-            vibrato_frequency_drift_amplitude: 0.05,
+            vibrato_frequency_drift_amplitude: 0.1,
             vibrato_amplitude_drift_amplitude: 0.4,
             vibrato_phase: 0.3*index as f32,
             vibrato_amplitude_drift: random.get_normal(),
+            pizzicato_exponent: pizzicato_exponent,
             spectrum_buffer: vec![],
             spectrum_temp: vec![],
             scratch: vec![],
@@ -183,7 +190,7 @@ impl Instrument {
                 }
                 for i in 1..self.spectrum_size {
                     let decay = 1.0-decay_target*(i as f32/self.spectrum_size as f32);
-                    let scale = c*decay*(1.0-i as f32/self.spectrum_size as f32).powi(20);
+                    let scale = c*decay*(1.0-i as f32/self.spectrum_size as f32).powi(self.pizzicato_exponent);
                     self.spectrum_buffer[i] += Complex::<f32>::new(scale*self.random.get_uniform(), scale*self.random.get_uniform());
                 }
             }
@@ -274,16 +281,14 @@ impl Instrument {
             let vibrato_freq = vibrato_base_freq * (1.0+self.vibrato_frequency_drift_amplitude*(0.5*PI*self.vibrato_phase).cos());
             let vibrato_amplitude = self.vibrato_amplitude * (1.0+self.vibrato_amplitude_drift_amplitude*self.vibrato_amplitude_drift);
 
-            // Compute the instantaneous frequency.  This depends on the primary frequency of the note
-            // and vibrato.  It also increases slightly whenever the volume is increasing.
+            // Compute the instantaneous frequency.  This depends on the primary frequency of the note and vibrato.
 
-            let freq_boost = f32::max(0.0, self.volume-self.last_volume);
             self.last_volume = self.volume;
             let vibrato_offset = vibrato_freq*self.period / SAMPLE_RATE as f32;
             self.vibrato_phase = (self.vibrato_phase+vibrato_offset) % 4.0;
             let vibrato = (2.0*PI*self.vibrato_phase).sin();
             let vibrato = vibrato*vibrato*vibrato;
-            let current_frequency = self.frequency * (1.0 + vibrato_amplitude*vibrato + 0.15*freq_boost);
+            let current_frequency = self.frequency * (1.0 + vibrato_amplitude*vibrato);
 
             // Update the buffer sizes.
 
