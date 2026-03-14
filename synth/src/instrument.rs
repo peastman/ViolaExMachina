@@ -38,6 +38,8 @@ pub struct Instrument {
     vibrato_amplitude_drift_amplitude: f32,
     vibrato_phase: f32,
     vibrato_amplitude_drift: f32,
+    frequency_drift_amplitude: f32,
+    frequency_drift: f32,
     pizzicato_exponent: i32,
     spectrum_buffer: Vec<Complex<f32>>,
     spectrum_temp: Vec<Complex<f32>>,
@@ -52,8 +54,7 @@ pub struct Instrument {
     decaying_notes: Vec<DecayingNote>,
     start_new_note: bool,
     last_note: i32,
-    last_articulation: Articulation,
-    last_volume: f32
+    last_articulation: Articulation
 }
 
 impl Instrument {
@@ -103,6 +104,8 @@ impl Instrument {
             vibrato_amplitude_drift_amplitude: 0.4,
             vibrato_phase: 0.3*index as f32,
             vibrato_amplitude_drift: random.get_normal(),
+            frequency_drift_amplitude: 0.002,
+            frequency_drift: random.get_normal(),
             pizzicato_exponent: pizzicato_exponent,
             spectrum_buffer: vec![],
             spectrum_temp: vec![],
@@ -117,8 +120,7 @@ impl Instrument {
             decaying_notes: vec![],
             start_new_note: false,
             last_note: 0,
-            last_articulation: Articulation::Arco,
-            last_volume: 0.0
+            last_articulation: Articulation::Arco
         }
     }
 
@@ -281,14 +283,16 @@ impl Instrument {
             let vibrato_freq = vibrato_base_freq * (1.0+self.vibrato_frequency_drift_amplitude*(0.5*PI*self.vibrato_phase).cos());
             let vibrato_amplitude = self.vibrato_amplitude * (1.0+self.vibrato_amplitude_drift_amplitude*self.vibrato_amplitude_drift);
 
-            // Compute the instantaneous frequency.  This depends on the primary frequency of the note and vibrato.
+            // Compute the instantaneous frequency.  This depends on the primary frequency of the note, vibrato, and random drift.
 
-            self.last_volume = self.volume;
+            let freq_drift_decay = (-self.period/SAMPLE_RATE as f32).exp();
+            let freq_drift_noise = (1.0-freq_drift_decay*freq_drift_decay).sqrt();
+            self.frequency_drift = freq_drift_decay*self.frequency_drift + freq_drift_noise*self.random.get_normal();
             let vibrato_offset = vibrato_freq*self.period / SAMPLE_RATE as f32;
             self.vibrato_phase = (self.vibrato_phase+vibrato_offset) % 4.0;
             let vibrato = (2.0*PI*self.vibrato_phase).sin();
             let vibrato = vibrato*vibrato*vibrato;
-            let current_frequency = self.frequency * (1.0 + vibrato_amplitude*vibrato);
+            let current_frequency = self.frequency * (1.0+self.frequency_drift_amplitude*self.frequency_drift) * (1.0+vibrato_amplitude*vibrato);
 
             // Update the buffer sizes.
 
