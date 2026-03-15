@@ -1,6 +1,6 @@
 [package]
 name = "viola_ex_machina"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 homepage = "https://github.com/peastman/ViolaExMachina"
 description = "A physically inspired synthesizer for stringed instruments"
