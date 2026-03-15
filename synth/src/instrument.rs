@@ -41,6 +41,7 @@ pub struct Instrument {
     frequency_drift_amplitude: f32,
     frequency_drift: f32,
     pizzicato_exponent: i32,
+    sample_rate: f32,
     spectrum_buffer: Vec<Complex<f32>>,
     spectrum_temp: Vec<Complex<f32>>,
     scratch: Vec<Complex<f32>>,
@@ -63,30 +64,35 @@ impl Instrument {
         let vibrato_high_frequency;
         let spectrum_coeff;
         let pizzicato_exponent;
+        let sample_rate;
         match instrument_type {
             InstrumentType::Violin => {
                 vibrato_low_frequency = 5.15;
                 vibrato_high_frequency = 5.4;
                 spectrum_coeff = (0.23477698, -0.61536557, 1.79446171, -4.53092934);
                 pizzicato_exponent = 20;
+                sample_rate = 2.0*SAMPLE_RATE as f32;
             }
             InstrumentType::Viola => {
                 vibrato_low_frequency = 5.15;
                 vibrato_high_frequency = 5.4;
                 spectrum_coeff = (0.71382589, -2.82709236, 1.52126997, -4.04880334);
                 pizzicato_exponent = 20;
+                sample_rate = SAMPLE_RATE as f32;
             }
             InstrumentType::Cello => {
                 vibrato_low_frequency = 5.0;
                 vibrato_high_frequency = 5.5;
                 spectrum_coeff = (0.12175271, -0.27890300, 3.28620357, -7.92322202);
                 pizzicato_exponent = 30;
+                sample_rate = SAMPLE_RATE as f32;
             }
             InstrumentType::Bass => {
                 vibrato_low_frequency = 4.9;
                 vibrato_high_frequency = 5.4;
                 spectrum_coeff = (0.31336917, -0.99976244, 1.1930173, -4.76781326);
                 pizzicato_exponent = 40;
+                sample_rate = SAMPLE_RATE as f32;
             }
         }
         let mut random = Random::new();
@@ -107,6 +113,7 @@ impl Instrument {
             frequency_drift_amplitude: 0.002,
             frequency_drift: random.get_normal(),
             pizzicato_exponent: pizzicato_exponent,
+            sample_rate: sample_rate,
             spectrum_buffer: vec![],
             spectrum_temp: vec![],
             scratch: vec![],
@@ -253,6 +260,19 @@ impl Instrument {
 
     /// Generate the next audio sample.
     pub fn generate(&mut self, fft_planner: &mut RealFftPlanner::<f32>) -> f32 {
+        if self.sample_rate == SAMPLE_RATE as f32 {
+            self.generate_internal(fft_planner)
+        }
+        else {
+            0.5*(self.generate_internal(fft_planner)+self.generate_internal(fft_planner))
+        }
+    }
+
+    /// This is where the actual audio generation happens.  Depending on the instrument,
+    /// audio generation can happen at either the output sample rate or twice that.  This
+    /// generates data at the internal rate, and generate() calls it either once or twice
+    /// for each output sample.
+    fn generate_internal(&mut self, fft_planner: &mut RealFftPlanner::<f32>) -> f32 {
         let mut result = 0.0;
         if self.output_position >= self.output_size {
             if self.start_new_note {
@@ -285,10 +305,10 @@ impl Instrument {
 
             // Compute the instantaneous frequency.  This depends on the primary frequency of the note, vibrato, and random drift.
 
-            let freq_drift_decay = (-self.period/SAMPLE_RATE as f32).exp();
+            let freq_drift_decay = (-self.period/self.sample_rate).exp();
             let freq_drift_noise = (1.0-freq_drift_decay*freq_drift_decay).sqrt();
             self.frequency_drift = freq_drift_decay*self.frequency_drift + freq_drift_noise*self.random.get_normal();
-            let vibrato_offset = vibrato_freq*self.period / SAMPLE_RATE as f32;
+            let vibrato_offset = vibrato_freq*self.period/self.sample_rate;
             self.vibrato_phase = (self.vibrato_phase+vibrato_offset) % 4.0;
             let vibrato = (2.0*PI*self.vibrato_phase).sin();
             let vibrato = vibrato*vibrato*vibrato;
@@ -296,7 +316,7 @@ impl Instrument {
 
             // Update the buffer sizes.
 
-            let new_period = SAMPLE_RATE as f32/current_frequency;
+            let new_period = self.sample_rate/current_frequency;
             let new_output_size = (new_period+self.period_offset).floor() as usize;
             let new_spectrum_size = (new_output_size as f32/2.0 + 1.0).floor() as usize;
             if new_output_size > self.output_buffer.len() {
