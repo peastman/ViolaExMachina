@@ -31,6 +31,7 @@ pub struct ViolaExMachina {
     resample_left: Resampler,
     resample_right: Resampler,
     last_note: u8,
+    last_articulation: Articulation,
     last_dynamics: f32,
     last_vibrato: f32,
     last_bow_position: f32,
@@ -110,6 +111,7 @@ impl Default for ViolaExMachina {
             resample_left: Resampler::new(synth::SAMPLE_RATE as f32),
             resample_right: Resampler::new(synth::SAMPLE_RATE as f32),
             last_note: 255,
+            last_articulation: Articulation::Arco,
             last_dynamics: -1.0,
             last_vibrato: -1.0,
             last_bow_position: -1.0,
@@ -192,6 +194,17 @@ impl Plugin for ViolaExMachina {
         let mut director = self.director.lock().unwrap();
         let sender = self.sender.lock().unwrap();
         let mut next_event = context.next_event();
+        if self.last_articulation != self.params.articulation.value() {
+            self.last_articulation = self.params.articulation.value();
+            let articulation = match &self.last_articulation {
+                Articulation::Arco => synth::Articulation::Arco,
+                Articulation::Marcato => synth::Articulation::Marcato,
+                Articulation::Spiccato => synth::Articulation::Spiccato,
+                Articulation::Pizzicato => synth::Articulation::Pizzicato,
+                Articulation::Tremolo => synth::Articulation::Tremolo
+            };
+            let _ = sender.send(Message::SetArticulation {articulation: articulation});
+        }
         if self.last_dynamics != self.params.dynamics.value() {
             self.last_dynamics = self.params.dynamics.value();
             let _ = sender.send(Message::SetVolume {volume: self.last_dynamics});
