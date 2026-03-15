@@ -299,9 +299,17 @@ impl Instrument {
 
             self.vibrato_amplitude_drift = 0.99*self.vibrato_amplitude_drift + 0.1*self.random.get_normal();
             let x = (self.last_note-self.instrument_type.lowest_note()) as f32 / (self.instrument_type.highest_note()-self.instrument_type.lowest_note()) as f32;
-            let vibrato_base_freq = self.vibrato_low_frequency + x*x*(self.vibrato_high_frequency-self.vibrato_low_frequency);
+            let vibrato_base_freq = self.vibrato_low_frequency + x*x*(self.vibrato_high_frequency-self.vibrato_low_frequency) + 0.5*self.vibrato_amplitude;
             let vibrato_freq = vibrato_base_freq * (1.0+self.vibrato_frequency_drift_amplitude*(0.5*PI*self.vibrato_phase).cos());
-            let vibrato_amplitude = self.vibrato_amplitude * (1.0+self.vibrato_amplitude_drift_amplitude*self.vibrato_amplitude_drift);
+            let vibrato_amplitude;
+            if self.last_note == self.instrument_type.lowest_note() {
+                // Vibrato is impossible on an instrument's lowest note.
+
+                vibrato_amplitude = 0.0;
+            }
+            else {
+                vibrato_amplitude = self.vibrato_amplitude * (1.0+self.vibrato_amplitude_drift_amplitude*self.vibrato_amplitude_drift);
+            }
 
             // Compute the instantaneous frequency.  This depends on the primary frequency of the note, vibrato, and random drift.
 
