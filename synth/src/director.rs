@@ -20,6 +20,7 @@ use crate::{InstrumentType, Articulation, SAMPLE_RATE};
 use crate::filter::{Filter, LowpassFilter, ResonantFilter};
 use std::f32::consts::PI;
 use std::sync::mpsc;
+use std::cell::RefCell;
 use realfft::RealFftPlanner;
 
 /// A message that can be sent to a Director.  Messages roughly correspond to MIDI events:
@@ -27,7 +28,7 @@ use realfft::RealFftPlanner;
 pub enum Message {
     Reinitialize {instrument_type: InstrumentType, instrument_count: usize},
     NoteOn {note_index: i32, velocity: f32},
-    NoteOff,
+    NoteOff {note_index: i32},
     SetArticulation {articulation: Articulation},
     SetVolume {volume: f32},
     SetPitchBend {semitones: f32},
@@ -37,6 +38,7 @@ pub enum Message {
     SetReleaseRate {release: f32},
     SetHarmonics {harmonics: bool},
     SetMute {mute: bool},
+    SetPolyphonic {polyphonic: bool},
     SetStereoWidth {width: f32},
     SetMaxInstrumentDelay {max_delay: i64}
 }
@@ -65,48 +67,55 @@ enum TransitionData {
 /// The only method you call directly on it is generate(), which is used to generate samples.
 /// This design allows control and generation to happen on different threads.
 pub struct Director {
-    instruments: Vec<Instrument>,
-    instrument_type: InstrumentType,
-    articulation: Articulation,
-    lowest_note: i32,
-    highest_note: i32,
-    random: Random,
-    fft_planner: RealFftPlanner::<f32>,
+    divisions: RefCell<Vec<Division>>,
+    pub instrument_type: InstrumentType,
+    pub instrument_count: usize,
+    pub articulation: Articulation,
+    pub random: Random,
+    pub fft_planner: RefCell<RealFftPlanner::<f32>>,
     left_filter: LowpassFilter,
     right_filter: LowpassFilter,
     left_mute_filter: LowpassFilter,
     right_mute_filter: LowpassFilter,
     apply_filter: bool,
-    step: i64,
+    pub step: i64,
     steps_until_off: i32,
+    pub max_instrument_delay: i64,
+    pub volume: f32,
+    pub tremolo_length: i64,
+    pub tremolo_space: i64,
+    pub bend: f32,
+    pub vibrato: f32,
+    pub bow_position: f32,
+    pub release_rate: f32,
+    pub bow_noise: f32,
+    pub bow_noise_scale: f32,
+    body_resonance: f32,
+    pub harmonics: bool,
+    pub mute: bool,
+    polyphonic: bool,
+    message_receiver: mpsc::Receiver<Message>,
+    pub stereo_width: f32,
+    reverb: Vec<Reverb>,
+    pub noise_buffer: Vec<f32>,
+}
+
+pub struct Division {
+    instruments: Vec<Instrument>,
+    random: Random,
+    steps_until_off: i32,
+    current_note: i32,
     transitions: Vec<Transition>,
-    max_instrument_delay: i64,
     instrument_delays: Vec<i64>,
-    volume: f32,
     envelope: Vec<f32>,
     frequency: Vec<f32>,
     tremolo_start: Vec<i64>,
     tremolo_end: Vec<i64>,
     tremolo_volume: Vec<f32>,
     tremolo_down_bow: Vec<bool>,
-    tremolo_length: i64,
-    tremolo_space: i64,
-    bend: f32,
-    vibrato: f32,
-    bow_position: f32,
-    release_rate: f32,
-    bow_noise: f32,
-    bow_noise_scale: f32,
-    body_resonance: f32,
-    harmonics: bool,
-    mute: bool,
     envelope_after_transitions: f32,
     frequency_after_transitions: f32,
-    message_receiver: mpsc::Receiver<Message>,
-    stereo_width: f32,
     instrument_pan: Vec<f32>,
-    reverb: Vec<Reverb>,
-    noise_buffer: Vec<f32>,
     noise_position: Vec<usize>,
     noise_filter: Vec<ResonantFilter>
 }
@@ -114,13 +123,12 @@ pub struct Director {
 impl Director {
     pub fn new(instrument_type: InstrumentType, instrument_count: usize, message_receiver: mpsc::Receiver<Message>) -> Self {
         let mut result = Self {
-            instruments: vec![],
+            divisions: RefCell::new(vec![]),
             instrument_type: instrument_type.clone(),
+            instrument_count: 0,
             articulation: Articulation::Arco,
-            lowest_note: 0,
-            highest_note: 0,
             random: Random::new(),
-            fft_planner: RealFftPlanner::<f32>::new(),
+            fft_planner: RefCell::new(RealFftPlanner::<f32>::new()),
             left_filter: LowpassFilter::new(6500.0),
             right_filter: LowpassFilter::new(6500.0),
             left_mute_filter: LowpassFilter::new(1200.0),
@@ -128,16 +136,8 @@ impl Director {
             apply_filter: true,
             step: 0,
             steps_until_off: 0,
-            transitions: vec![],
             max_instrument_delay: 2000,
-            instrument_delays: vec![],
             volume: 1.0,
-            envelope: vec![],
-            frequency: vec![],
-            tremolo_start: vec![],
-            tremolo_end: vec![],
-            tremolo_volume: vec![],
-            tremolo_down_bow: vec![],
             tremolo_length: 3000,
             tremolo_space: 1000,
             bend: 1.0,
@@ -149,16 +149,15 @@ impl Director {
             body_resonance: 0.1,
             harmonics: false,
             mute: false,
-            envelope_after_transitions: 0.0,
-            frequency_after_transitions: 0.0,
+            polyphonic: false,
             message_receiver: message_receiver,
             stereo_width: 0.3,
-            instrument_pan: vec![],
             reverb: vec![],
             noise_buffer: parse_flac(include_bytes!("data/bow_noise.flac")),
-            noise_position: vec![],
-            noise_filter: vec![]
         };
+        for _ in 0..4 {
+            result.divisions.borrow_mut().push(Division::new())
+        }
         result.initialize_instruments(instrument_type, instrument_count);
         result
     }
@@ -167,24 +166,8 @@ impl Director {
     /// created, and again whenever a Reinitialize message is received.
     fn initialize_instruments(&mut self, instrument_type: InstrumentType, instrument_count: usize) {
         self.instrument_type = instrument_type.clone();
-        self.instruments.clear();
-        for i in 0..instrument_count {
-            self.instruments.push(Instrument::new(instrument_type, i));
-        }
-        self.transitions.clear();
-        self.instrument_delays = vec![0; instrument_count];
-        self.instrument_pan = vec![0.0; instrument_count];
-        self.envelope = vec![0.0; instrument_count];
-        self.frequency = vec![440.0; instrument_count];
-        self.tremolo_start = vec![0; instrument_count];
-        self.tremolo_end = vec![0; instrument_count];
-        self.tremolo_volume = vec![1.0; instrument_count];
-        self.tremolo_down_bow = vec![true; instrument_count];
+        self.instrument_count = instrument_count;
         self.bend = 1.0;
-        self.envelope_after_transitions = 0.0;
-        self.frequency_after_transitions = 0.0;
-        self.lowest_note = instrument_type.lowest_note();
-        self.highest_note = instrument_type.highest_note();
         match instrument_type {
             InstrumentType::Violin => {
                 self.bow_noise_scale = 1.0;
@@ -226,135 +209,64 @@ impl Director {
             InstrumentType::Bass => parse_flac(include_bytes!("data/bass.flac"))
         };
         self.reverb.clear();
-        self.reverb.push(Reverb::new(&ir, &mut self.fft_planner));
+        self.reverb.push(Reverb::new(&ir, &mut self.fft_planner.borrow_mut()));
         if instrument_count > 1 {
-            self.reverb.push(Reverb::new(&ir, &mut self.fft_planner));
+            self.reverb.push(Reverb::new(&ir, &mut self.fft_planner.borrow_mut()));
         }
-        self.noise_position = vec![0; instrument_count];
-        for i in 0..instrument_count {
-            self.noise_position[i] = (self.noise_buffer.len() as f32*(i as f32+0.5*self.random.get_uniform())/instrument_count as f32) as usize;
+        for division in self.divisions.borrow_mut().iter_mut() {
+            division.initialize_instruments(self);
         }
-        self.noise_filter = vec![ResonantFilter::new(100.0, 100.0); instrument_count];
-        self.update_pan_positions();
-        self.update_vibrato();
-        self.update_harmonics();
-        self.update_volume();
-        self.update_frequency();
-        self.update_bow_position();
-        self.update_instrument_delays();
     }
 
     /// Start playing a new note.
     fn note_on(&mut self, note_index: i32, velocity: f32) -> Result<(), String> {
-        if note_index < self.lowest_note || note_index > self.highest_note {
+        if note_index < self.instrument_type.lowest_note() || note_index > self.instrument_type.highest_note() {
             // The note index is outside the range of this instrument.  Ignore it.
 
             return Ok(());
         }
-        for i in 0..self.envelope.len() {
-            let freq = 440.0 * f32::powf(2.0, (note_index-69) as f32/12.0);
-            self.frequency[i] = freq;
-            self.noise_filter[i] = ResonantFilter::new(2.0*freq, freq);
-        }
-        self.update_frequency();
-        for instrument in &mut self.instruments {
-            instrument.note_on(note_index, self.articulation);
-        }
-        match &self.articulation {
-            Articulation::Arco => {
-                let attack_time = 1000+(30000.0*(1.0-velocity)) as i64;
-                let start_envelope = 0.5*self.envelope[0];
-                self.add_envelope_transition(0, start_envelope);
-                self.add_transition(0, attack_time, TransitionData::EnvelopeChange {start_envelope: start_envelope, end_envelope: 1.0});
-                self.apply_filter = true;
-            }
-            Articulation::Marcato => {
-                let attack_time = 1000+(5000.0*(1.0-velocity)) as i64;
-                let peak = 1.0+3.0*velocity;
-                self.add_envelope_transition(attack_time, peak);
-                self.add_transition(attack_time, 2*attack_time, TransitionData::EnvelopeChange {start_envelope: peak, end_envelope: 1.0});
-                self.apply_filter = true;
-            }
-            Articulation::Spiccato => {
-                let hold_time = 2750+(self.random.get_int()%500) as i64;
-                let peak = 0.05+4.0*velocity;
-                self.add_envelope_transition(0, peak);
-                self.add_transition(hold_time, 0, TransitionData::EnvelopeChange {start_envelope: peak, end_envelope: 0.0});
+        let mut division_index = usize::MAX;
+        if self.polyphonic {
+            // Select a division to play the note.  First try to find one that is completely idle.
 
-                // The bow striking the string causes a momentary shift in pitch.
-
-                let end_frequency = self.frequency[0];
-                let start_frequency = 1.02*end_frequency;
-                for i in 0..self.frequency.len() {
-                    self.frequency[i] = start_frequency;
+            for (i, division) in self.divisions.borrow().iter().enumerate() {
+                if division.current_note == -1 && division.transitions.len() == 0 {
+                    division_index = i;
                 }
-                self.add_transition(0, 2000, TransitionData::FrequencyChange {start_frequency: start_frequency, end_frequency: end_frequency});
-                self.apply_filter = true;
             }
-            Articulation::Pizzicato => {
-                let peak = 1.0+15.0*velocity;
-                self.add_envelope_transition(0, peak);
-                let end_frequency = self.frequency[0];
-                let period = SAMPLE_RATE as f32/end_frequency;
-                let hold_time = (2.0*period) as i64;
-                self.add_transition(hold_time, 0, TransitionData::EnvelopeChange {start_envelope: peak, end_envelope: 0.0});
+            if division_index == usize::MAX {
+                // None is idle.  Look for one that is in the process of releasing the previous note.
 
-                // Plucking the string causes a momentary shift in pitch.
-
-                let start_frequency = 1.015*end_frequency;
-                for i in 0..self.frequency.len() {
-                    self.frequency[i] = start_frequency;
+                for (i, division) in self.divisions.borrow().iter().enumerate() {
+                    if division.current_note == -1 {
+                        division_index = i;
+                    }
                 }
-                self.add_transition(0, hold_time, TransitionData::FrequencyChange {start_frequency: start_frequency, end_frequency: end_frequency});
-                self.apply_filter = false;
-            }
-            Articulation::Tremolo => {
-                self.add_envelope_transition(0, 1.0);
-                for i in 0..self.tremolo_start.len() {
-                    self.tremolo_start[i] = self.step;
-                    self.tremolo_end[i] = self.step + self.tremolo_length + self.random.get_int() as i64%500;
-                    self.tremolo_volume[i] = 1.0 + self.random.get_uniform();
-                    self.tremolo_down_bow[i] = true;
-                }
-                self.apply_filter = true;
             }
         }
-        Ok(())
+        else {
+            // Send all notes to division 0.
+
+            division_index = 0;
+        }
+        if division_index != usize::MAX {
+            self.steps_until_off = 10000;
+            self.divisions.borrow_mut()[division_index].note_on(note_index, velocity, self)
+        }
+        else {
+            // No division is available.  Skip the note.
+
+            Ok(())
+        }
     }
 
     /// End the current note.  Because this is a monophonic instrument, note_on() automatically
     /// ends the current note as well.
-    fn note_off(&mut self) {
-        match &self.articulation {
-            Articulation::Spiccato => {}
-            Articulation::Pizzicato => {}
-            _ => {
-                let release_time = 1000 + (10000.0*(1.0-self.release_rate)) as i64;
-                self.add_envelope_transition(release_time, 0.0);
-            }
+    fn note_off(&mut self, note_index: i32) {
+        for division in self.divisions.borrow_mut().iter_mut() {
+            division.note_off(note_index, self)
         }
    }
-
-    /// Add a Transition to the queue.
-    fn add_transition(&mut self, delay: i64, duration: i64, data: TransitionData) {
-        let transition = Transition { start: self.step+delay, end: self.step+delay+duration, data: data };
-        match &transition.data {
-            TransitionData::EnvelopeChange {start_envelope: _, end_envelope} => {
-                self.envelope_after_transitions = *end_envelope;
-            }
-            TransitionData::FrequencyChange {start_frequency: _, end_frequency} => {
-                self.frequency_after_transitions = *end_frequency;
-            }
-        }
-        self.transitions.push(transition);
-    }
-
-    fn add_envelope_transition(&mut self, time: i64, end_envelope: f32) {
-        // Remove all current envelope transitions.
-
-        self.transitions.retain(|t| if let TransitionData::EnvelopeChange {..} = t.data {false} else {true});
-        self.add_transition(0, time, TransitionData::EnvelopeChange {start_envelope: self.envelope[0], end_envelope: end_envelope});
-    }
 
     /// This is called repeated to generate audio data.  Each generates the two channels
     /// (left, right) for the next sample.
@@ -363,15 +275,11 @@ impl Director {
 
         if self.step%100 == 0 {
             self.process_messages();
-            self.update_transitions();
         }
         self.step += 1;
 
         // If nothing has been played for a while, we can return without doing anything.
 
-        if self.instruments[0].get_volume() > 0.0 {
-            self.steps_until_off = 10000;
-        }
         if self.steps_until_off == 0 {
             return (0.0, 0.0);
         }
@@ -381,13 +289,10 @@ impl Director {
 
         let mut left = 0.0;
         let mut right = 0.0;
-        for i in 0..self.instruments.len() {
-            let mut noise = self.bow_noise_scale*self.bow_noise*self.instruments[i].get_volume()*self.noise_buffer[self.noise_position[i]];
-            noise += 5e-5*self.frequency[i]*self.noise_filter[i].process(noise);
-            let signal = self.instruments[i].generate(&mut self.fft_planner) + noise;
-            self.noise_position[i] = (self.noise_position[i]+1)%self.noise_buffer.len();
-            left += self.instrument_pan[i].cos()*signal;
-            right += self.instrument_pan[i].sin()*signal;
+        for division in self.divisions.borrow_mut().iter_mut() {
+            let (div_left, div_right) = division.generate(self);
+            left += div_left;
+            right += div_right;
         }
         if self.apply_filter {
             left = self.left_filter.process(left);
@@ -411,7 +316,7 @@ impl Director {
         if self.steps_until_off < 100 && (left.abs() > 0.001 || right.abs() > 0.001) {
             self.steps_until_off = 100;
         }
-        let scale = 0.01/(self.instruments.len() as f32).sqrt();
+        let scale = 0.01/(self.instrument_count as f32).sqrt();
         (scale*left, scale*right)
     }
 
@@ -428,27 +333,42 @@ impl Director {
                         Message::NoteOn {note_index, velocity} => {
                             let _ = self.note_on(note_index, velocity);
                         }
-                        Message::NoteOff => {
-                            self.note_off();
+                        Message::NoteOff {note_index} => {
+                            self.note_off(note_index);
                         }
                         Message::SetVolume {volume} => {
                             self.volume = volume;
-                            self.update_volume();
+                            for division in self.divisions.borrow_mut().iter_mut() {
+                                division.update_volume(self);
+                            }
                         }
                         Message::SetArticulation {articulation} => {
                             self.articulation = articulation;
+                            self.apply_filter = match articulation {
+                                Articulation::Arco => true,
+                                Articulation::Marcato => true,
+                                Articulation::Spiccato => true,
+                                Articulation::Pizzicato => false,
+                                Articulation::Tremolo => true
+                            };
                         }
                         Message::SetPitchBend {semitones} => {
                             self.bend = f32::powf(2.0, semitones as f32/12.0);
-                            self.update_frequency();
+                            for division in self.divisions.borrow_mut().iter_mut() {
+                                division.update_frequency(self);
+                            }
                         }
                         Message::SetVibrato {vibrato} => {
                             self.vibrato = vibrato;
-                            self.update_vibrato();
+                            for division in self.divisions.borrow_mut().iter_mut() {
+                                division.update_vibrato(self);
+                            }
                         }
                         Message::SetBowPosition {bow_position} => {
                             self.bow_position = bow_position;
-                            self.update_bow_position();
+                            for division in self.divisions.borrow_mut().iter_mut() {
+                                division.update_bow_position(self);
+                            }
                         }
                         Message::SetBowNoise {bow_noise} => {
                             self.bow_noise = bow_noise;
@@ -458,20 +378,29 @@ impl Director {
                         }
                         Message::SetHarmonics {harmonics} => {
                             self.harmonics = harmonics;
-                            self.update_harmonics();
+                            for division in self.divisions.borrow_mut().iter_mut() {
+                                division.update_harmonics(self);
+                            }
                         }
                         Message::SetMute {mute} => {
                             self.mute = mute;
                             self.left_mute_filter.reset();
                             self.right_mute_filter.reset();
                         }
+                        Message::SetPolyphonic {polyphonic} => {
+                            self.polyphonic = polyphonic;
+                        }
                         Message::SetStereoWidth {width} => {
                             self.stereo_width = width;
-                            self.update_pan_positions();
+                            for division in self.divisions.borrow_mut().iter_mut() {
+                                division.update_pan_positions(self);
+                            }
                         }
                         Message::SetMaxInstrumentDelay {max_delay} => {
                             self.max_instrument_delay = max_delay;
-                            self.update_instrument_delays();
+                            for division in self.divisions.borrow_mut().iter_mut() {
+                                division.update_instrument_delays(self);
+                            }
                         }
                     }
                 }
@@ -481,15 +410,216 @@ impl Director {
             }
         }
     }
+}
+
+impl Division {
+    pub fn new() -> Self {
+        Self {
+            instruments: vec![],
+            random: Random::new(),
+            steps_until_off: 0,
+            current_note: -1,
+            transitions: vec![],
+            instrument_delays: vec![],
+            envelope: vec![],
+            frequency: vec![],
+            tremolo_start: vec![],
+            tremolo_end: vec![],
+            tremolo_volume: vec![],
+            tremolo_down_bow: vec![],
+            envelope_after_transitions: 0.0,
+            frequency_after_transitions: 0.0,
+            instrument_pan: vec![],
+            noise_position: vec![],
+            noise_filter: vec![]
+        }
+    }
+
+    /// Initialize the set of instruments controlled by this Director.  This is called when it is first
+    /// created, and again whenever a Reinitialize message is received.
+    fn initialize_instruments(&mut self, director: &Director) {
+        self.instruments.clear();
+        let instrument_count = director.instrument_count;
+        for i in 0..instrument_count {
+            self.instruments.push(Instrument::new(director.instrument_type, i));
+        }
+        self.transitions.clear();
+        self.instrument_delays = vec![0; instrument_count];
+        self.instrument_pan = vec![0.0; instrument_count];
+        self.envelope = vec![0.0; instrument_count];
+        self.frequency = vec![440.0; instrument_count];
+        self.tremolo_start = vec![0; instrument_count];
+        self.tremolo_end = vec![0; instrument_count];
+        self.tremolo_volume = vec![1.0; instrument_count];
+        self.tremolo_down_bow = vec![true; instrument_count];
+        self.envelope_after_transitions = 0.0;
+        self.frequency_after_transitions = 0.0;
+        self.noise_position = vec![0; instrument_count];
+        for i in 0..instrument_count {
+            self.noise_position[i] = (director.noise_buffer.len() as f32*(i as f32+0.5*self.random.get_uniform())/instrument_count as f32) as usize;
+        }
+        self.noise_filter = vec![ResonantFilter::new(100.0, 100.0); instrument_count];
+        self.update_pan_positions(director);
+        self.update_vibrato(director);
+        self.update_harmonics(director);
+        self.update_volume(director);
+        self.update_frequency(director);
+        self.update_bow_position(director);
+        self.update_instrument_delays(director);
+    }
+
+    /// Start playing a new note.
+    fn note_on(&mut self, note_index: i32, velocity: f32, director: &Director) -> Result<(), String> {
+        self.current_note = note_index;
+        for i in 0..self.envelope.len() {
+            let freq = 440.0 * f32::powf(2.0, (note_index-69) as f32/12.0);
+            self.frequency[i] = freq;
+            self.noise_filter[i] = ResonantFilter::new(2.0*freq, freq);
+        }
+        self.update_frequency(director);
+        for instrument in &mut self.instruments {
+            instrument.note_on(note_index, director.articulation);
+        }
+        match &director.articulation {
+            Articulation::Arco => {
+                let attack_time = 1000+(30000.0*(1.0-velocity)) as i64;
+                let start_envelope = 0.5*self.envelope[0];
+                self.add_envelope_transition(0, start_envelope, director);
+                self.add_transition(0, attack_time, director, TransitionData::EnvelopeChange {start_envelope: start_envelope, end_envelope: 1.0});
+            }
+            Articulation::Marcato => {
+                let attack_time = 1000+(5000.0*(1.0-velocity)) as i64;
+                let peak = 1.0+3.0*velocity;
+                self.add_envelope_transition(attack_time, peak, director);
+                self.add_transition(attack_time, 2*attack_time, director, TransitionData::EnvelopeChange {start_envelope: peak, end_envelope: 1.0});
+            }
+            Articulation::Spiccato => {
+                let hold_time = 2750+(self.random.get_int()%500) as i64;
+                let peak = 0.05+4.0*velocity;
+                self.add_envelope_transition(0, peak, director);
+                self.add_transition(hold_time, 0, director, TransitionData::EnvelopeChange {start_envelope: peak, end_envelope: 0.0});
+
+                // The bow striking the string causes a momentary shift in pitch.
+
+                let end_frequency = self.frequency[0];
+                let start_frequency = 1.02*end_frequency;
+                for i in 0..self.frequency.len() {
+                    self.frequency[i] = start_frequency;
+                }
+                self.add_transition(0, 2000, director, TransitionData::FrequencyChange {start_frequency: start_frequency, end_frequency: end_frequency});
+            }
+            Articulation::Pizzicato => {
+                let peak = 1.0+15.0*velocity;
+                self.add_envelope_transition(0, peak, director);
+                let end_frequency = self.frequency[0];
+                let period = SAMPLE_RATE as f32/end_frequency;
+                let hold_time = (2.0*period) as i64;
+                self.add_transition(hold_time, 0, director, TransitionData::EnvelopeChange {start_envelope: peak, end_envelope: 0.0});
+
+                // Plucking the string causes a momentary shift in pitch.
+
+                let start_frequency = 1.015*end_frequency;
+                for i in 0..self.frequency.len() {
+                    self.frequency[i] = start_frequency;
+                }
+                self.add_transition(0, hold_time, director, TransitionData::FrequencyChange {start_frequency: start_frequency, end_frequency: end_frequency});
+            }
+            Articulation::Tremolo => {
+                self.add_envelope_transition(0, 1.0, director);
+                for i in 0..self.tremolo_start.len() {
+                    self.tremolo_start[i] = director.step;
+                    self.tremolo_end[i] = director.step + director.tremolo_length + self.random.get_int() as i64%500;
+                    self.tremolo_volume[i] = 1.0 + self.random.get_uniform();
+                    self.tremolo_down_bow[i] = true;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// End the current note.  Because this is a monophonic instrument, note_on() automatically
+    /// ends the current note as well.
+    fn note_off(&mut self, note_index: i32, director: &Director) {
+        if note_index != self.current_note {
+            return;
+        }
+        match &director.articulation {
+            Articulation::Spiccato => {}
+            Articulation::Pizzicato => {}
+            _ => {
+                let release_time = 1000 + (10000.0*(1.0-director.release_rate)) as i64;
+                self.add_envelope_transition(release_time, 0.0, director);
+            }
+        }
+        self.current_note = -1;
+   }
+
+    /// Add a Transition to the queue.
+    fn add_transition(&mut self, delay: i64, duration: i64, director: &Director, data: TransitionData) {
+        let transition = Transition { start: director.step+delay, end: director.step+delay+duration, data: data };
+        match &transition.data {
+            TransitionData::EnvelopeChange {start_envelope: _, end_envelope} => {
+                self.envelope_after_transitions = *end_envelope;
+            }
+            TransitionData::FrequencyChange {start_frequency: _, end_frequency} => {
+                self.frequency_after_transitions = *end_frequency;
+            }
+        }
+        self.transitions.push(transition);
+    }
+
+    fn add_envelope_transition(&mut self, time: i64, end_envelope: f32, director: &Director) {
+        // Remove all current envelope transitions.
+
+        self.transitions.retain(|t| if let TransitionData::EnvelopeChange {..} = t.data {false} else {true});
+        self.add_transition(0, time, director, TransitionData::EnvelopeChange {start_envelope: self.envelope[0], end_envelope: end_envelope});
+    }
+
+    /// This is called repeated to generate audio data.  Each generates the two channels
+    /// (left, right) for the next sample.
+    pub fn generate(&mut self, director: &Director) -> (f32, f32) {
+        // Deal with the queues of Messages and Transitions.  This only needs to be done occassionally.
+
+        if director.step%100 == 0 {
+            self.update_transitions(director);
+        }
+
+        // If nothing has been played for a while, we can return without doing anything.
+
+        if self.instruments[0].get_volume() > 0.0 {
+            self.steps_until_off = 10000;
+        }
+        if self.steps_until_off == 0 {
+            return (0.0, 0.0);
+        }
+        self.steps_until_off -= 1;
+
+        // Loop over Instruments and generate audio for each one.
+
+        let mut left = 0.0;
+        let mut right = 0.0;
+        for i in 0..self.instruments.len() {
+            let mut noise = director.bow_noise_scale*director.bow_noise*self.instruments[i].get_volume()*director.noise_buffer[self.noise_position[i]];
+            noise += 5e-5*self.frequency[i]*self.noise_filter[i].process(noise);
+            let signal = self.instruments[i].generate(&mut director.fft_planner.borrow_mut()) + noise;
+            self.noise_position[i] = (self.noise_position[i]+1)%director.noise_buffer.len();
+            left += self.instrument_pan[i].cos()*signal;
+            right += self.instrument_pan[i].sin()*signal;
+        }
+        if self.steps_until_off < 100 && (left.abs() > 0.001 || right.abs() > 0.001) {
+            self.steps_until_off = 100;
+        }
+        (left, right)
+    }
 
     /// This is called occasionally by generate().  It processes any Transitions in the queue,
     /// updating the instruments as appropriate.
-    fn update_transitions(&mut self) {
+    fn update_transitions(&mut self, director: &Director) {
         let mut volume_changed = false;
         let mut frequency_changed = false;
         for transition in &self.transitions {
             for i in 0..self.instruments.len() {
-                let j = self.step-self.instrument_delays[i];
+                let j = director.step-self.instrument_delays[i];
                 if j >= transition.start {
                     let fraction = (j-transition.start) as f32 / (transition.end-transition.start) as f32;
                     let weight2 = if j < transition.end {0.5-0.5*(fraction*std::f32::consts::PI).cos()} else {1.0};
@@ -507,47 +637,47 @@ impl Director {
                 }
             }
         }
-        if let Articulation::Tremolo {} = &self.articulation {
+        if let Articulation::Tremolo {} = &director.articulation {
             volume_changed = true;
             frequency_changed = true;
         }
         if volume_changed {
-            self.update_volume();
-            self.update_vibrato();
+            self.update_volume(director);
+            self.update_vibrato(director);
         }
         if frequency_changed {
-            self.update_frequency();
+            self.update_frequency(director);
         }
-        self.transitions.retain(|t| self.step < t.end+self.max_instrument_delay);
+        self.transitions.retain(|t| director.step < t.end+director.max_instrument_delay);
     }
 
     /// Update the volumes of all Instruments.  This is called whenever the Director's volume or
     /// envelope is changed.
-    fn update_volume(&mut self) {
-        let actual_volume = 0.05+0.95*self.volume;
+    fn update_volume(&mut self, director: &Director) {
+        let actual_volume = 0.05+0.95*director.volume;
         for i in 0..self.instruments.len() {
             let mut vol = actual_volume*self.envelope[i];
-            if let Articulation::Tremolo {} = &self.articulation {
+            if let Articulation::Tremolo {} = &director.articulation {
                 // When playing tremolo, the volume needs to change continuously.
 
-                if self.step > self.tremolo_end[i] {
+                if director.step > self.tremolo_end[i] {
                     vol = 0.0;
                     self.tremolo_volume[i] = 1.0 + self.random.get_uniform();
                     if !self.tremolo_down_bow[i] {
                         self.tremolo_volume[i] *= 0.9;
-                        self.tremolo_start[i] = self.step+(0.8*self.tremolo_space as f32) as i64;
+                        self.tremolo_start[i] = director.step+(0.8*director.tremolo_space as f32) as i64;
                     }
                     else {
-                        self.tremolo_start[i] = self.step+self.tremolo_space;
+                        self.tremolo_start[i] = director.step+director.tremolo_space;
                     }
-                    self.tremolo_end[i] = self.tremolo_start[i] + self.tremolo_length + self.random.get_int() as i64 % 500;
+                    self.tremolo_end[i] = self.tremolo_start[i] + director.tremolo_length + self.random.get_int() as i64 % 500;
                     self.tremolo_down_bow[i] = !self.tremolo_down_bow[i];
                 }
-                else if self.step < self.tremolo_start[i] {
+                else if director.step < self.tremolo_start[i] {
                     vol = 0.0;
                 }
                 else {
-                    let x = (self.step-self.tremolo_start[i]) as f32 / (self.tremolo_end[i]-self.tremolo_start[i]) as f32;
+                    let x = (director.step-self.tremolo_start[i]) as f32 / (self.tremolo_end[i]-self.tremolo_start[i]) as f32;
                     vol *= self.tremolo_volume[i]*3.0*(x-x*x);
                 }
             }
@@ -557,20 +687,20 @@ impl Director {
 
     /// Update the frequencies of all Instruments.  This is called whenever the Director's frequency or
     /// pitch bend is changed.
-    fn update_frequency(&mut self) {
+    fn update_frequency(&mut self, director: &Director) {
         for i in 0..self.instruments.len() {
-            let mut freq = self.frequency[i]*self.bend;
-            if let Articulation::Tremolo {} = &self.articulation {
+            let mut freq = self.frequency[i]*director.bend;
+            if let Articulation::Tremolo {} = &director.articulation {
                 // When playing tremolo, the frequency needs to change continuously.
 
-                let freq_delta = 0.02*freq*self.volume;
+                let freq_delta = 0.02*freq*director.volume;
                 let low_freq = freq-0.5*freq_delta;
-                if self.step < self.tremolo_start[i] {
-                    let x = (self.tremolo_start[i]-self.step) as f32 / self.tremolo_space as f32;
+                if director.step < self.tremolo_start[i] {
+                    let x = (self.tremolo_start[i]-director.step) as f32 / director.tremolo_space as f32;
                     freq = low_freq+x*freq_delta;
                 }
                 else {
-                    let x = (self.step-self.tremolo_start[i]) as f32 / (self.tremolo_end[i]-self.tremolo_start[i]) as f32;
+                    let x = (director.step-self.tremolo_start[i]) as f32 / (self.tremolo_end[i]-self.tremolo_start[i]) as f32;
                     freq = low_freq+x*freq_delta;
                 }
             }
@@ -579,40 +709,40 @@ impl Director {
     }
 
     /// Update the bow position of all Instruments.  This is called whenever the Director's bow position is changed.
-    fn update_bow_position(&mut self) {
+    fn update_bow_position(&mut self, director: &Director) {
         for i in 0..self.instruments.len() {
-            self.instruments[i].set_bow_position(self.bow_position);
+            self.instruments[i].set_bow_position(director.bow_position);
         }
     }
     /// Update the vibrato of all Instruments.  This is called whenever the Director's vibrato is changed.
-    fn update_vibrato(&mut self) {
+    fn update_vibrato(&mut self, director: &Director) {
         for i in 0..self.instruments.len() {
-            self.instruments[i].set_vibrato_amplitude(0.01*self.vibrato*self.envelope[i]);
+            self.instruments[i].set_vibrato_amplitude(0.01*director.vibrato*self.envelope[i]);
         }
     }
 
     /// Update whether harmonics are enabled for all Instruments.
-    fn update_harmonics(&mut self) {
+    fn update_harmonics(&mut self, director: &Director) {
         for instrument in &mut self.instruments.iter_mut() {
-            instrument.set_harmonics(self.harmonics);
+            instrument.set_harmonics(director.harmonics);
         }
     }
 
     /// Update the position each instrument is panned to.
-    fn update_pan_positions(&mut self) {
+    fn update_pan_positions(&mut self, director: &Director) {
         let instrument_count = self.instruments.len();
         if instrument_count == 1 {
             self.instrument_pan[0] = 0.25*PI;
         }
         else {
             for i in 0..instrument_count {
-                self.instrument_pan[i] = 0.5*PI*(0.5 + self.stereo_width*(i as f32 / (instrument_count-1) as f32 - 0.5));
+                self.instrument_pan[i] = 0.5*PI*(0.5 + director.stereo_width*(i as f32 / (instrument_count-1) as f32 - 0.5));
             }
         }
     }
 
     /// Update the delay for each instrument.
-    fn update_instrument_delays(&mut self) {
+    fn update_instrument_delays(&mut self, director: &Director) {
         let instrument_count = self.instruments.len();
         if instrument_count == 1 {
             self.instrument_delays[0] = 0;
@@ -620,7 +750,7 @@ impl Director {
         else {
             for i in 0..instrument_count {
                 let index = ((i+(instrument_count/2)) % instrument_count) as i64;
-                self.instrument_delays[i] = self.max_instrument_delay*index/(instrument_count-1) as i64;
+                self.instrument_delays[i] = director.max_instrument_delay*index/(instrument_count-1) as i64;
             }
         }
     }

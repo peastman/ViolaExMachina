@@ -1,8 +1,16 @@
 # Playing
 
-Viola Ex Machina is a monophonic instrument: each instance plays only one note at a time.  To
-create splits use multiple tracks, each with its own instance of the plugin.  If you press a
-new note before releasing the previous one, it is played legato, smoothly blending between them.
+Viola Ex Machina can be played in either monophonic or polyphonic mode.  In monophonic mode,
+each instance plays only one note at a time.  To create splits use multiple tracks, each with
+its own instance of the plugin.  If you press a new note before releasing the previous one,
+it is played legato, smoothly blending between them.
+
+In polyphonic mode, each instance can play up to four notes at a time, but playing legato is
+more difficult.  If you are concerned with realism, polyphonic mode should be used carefully.
+There are many restrictions on which notes can be played together on a real instrument: they
+must be played on adjacent strings, one note per string, and all must be fingered together.
+Viola Ex Machina does not try to enforce these restrictions.  It will let you play chords that
+would be impossible on a real instrument.
 
 # Articulations
 
@@ -40,3 +48,4 @@ There are several additional parameters you can automate in a DAW to control the
   at that position, creating a thin sound two octaves higher than usual.
 - **Con Sordino**.  A concert mute is placed on the bridge, altering the tone color and making the
   sound slightly quieter.
+- **Polyphonic**.  Whether to play in monophonic or polyphonic mode.

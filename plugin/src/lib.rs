@@ -21,6 +21,7 @@ use synth::resampler::Resampler;
 use nih_plug::prelude::*;
 use nih_plug_egui::EguiState;
 use std::sync::{Arc, Mutex, mpsc};
+use std::collections::HashSet;
 
 pub struct ViolaExMachina {
     params: Arc<ViolaExMachinaParams>,
@@ -40,7 +41,8 @@ pub struct ViolaExMachina {
     last_stereo_width: f32,
     last_time_spread: i32,
     last_harmonics: bool,
-    last_mute: bool
+    last_mute: bool,
+    last_polyphonic: bool
 }
 
 #[derive(Params)]
@@ -70,7 +72,9 @@ struct ViolaExMachinaParams {
     #[id = "harmonics"]
     pub harmonics: BoolParam,
     #[id = "mute"]
-    pub mute: BoolParam
+    pub mute: BoolParam,
+    #[id = "polyphonic"]
+    pub polyphonic: BoolParam
 }
 
 #[derive(Copy, Clone, Enum, Debug, PartialEq)]
@@ -120,7 +124,8 @@ impl Default for ViolaExMachina {
             last_stereo_width: -1.0,
             last_time_spread: -1,
             last_harmonics: false,
-            last_mute: false
+            last_mute: false,
+            last_polyphonic: false
         }
     }
 }
@@ -140,7 +145,8 @@ impl Default for ViolaExMachinaParams {
             stereo_width: FloatParam::new("Stereo Width", 0.7, FloatRange::Linear {min: 0.0, max: 1.0}),
             time_spread: IntParam::new("Time Spread", 50, IntRange::Linear {min: 0, max: 100}),
             harmonics: BoolParam::new("Harmonics", false),
-            mute: BoolParam::new("Con Sordino", false)
+            mute: BoolParam::new("Con Sordino", false),
+            polyphonic: BoolParam::new("Polyphonic", false)
         };
         result
     }
@@ -241,8 +247,12 @@ impl Plugin for ViolaExMachina {
             self.last_mute = self.params.mute.value();
             let _ = sender.send(Message::SetMute {mute: self.last_mute});
         }
+        if self.last_polyphonic != self.params.polyphonic.value() {
+            self.last_polyphonic = self.params.polyphonic.value();
+            let _ = sender.send(Message::SetPolyphonic {polyphonic: self.last_polyphonic});
+        }
         for (sample_id, channel_samples) in buffer.iter_samples().enumerate() {
-            let mut send_note_off = false;
+            let mut new_notes = HashSet::new();
             while let Some(event) = next_event {
                 if event.timing() != sample_id as u32 {
                     break;
@@ -254,14 +264,14 @@ impl Plugin for ViolaExMachina {
                             velocity: velocity});
                         self.last_note = note;
 
-                        // If we get both a NoteOn and a NoteOff and the same time, skip the NoteOff
+                        // If we get both a NoteOn and a NoteOff for the same note at the same time, skip the NoteOff
                         // to allow legato playing.
 
-                        send_note_off = false;
+                        new_notes.insert(note);
                     },
                     NoteEvent::NoteOff { note, .. } => {
-                        if note == self.last_note {
-                            send_note_off = true;
+                        if !new_notes.contains(&note) {
+                            let _ = sender.send(Message::NoteOff {note_index: note as i32} );
                         }
                     },
                     NoteEvent::MidiPitchBend { value, .. } => {
@@ -270,9 +280,6 @@ impl Plugin for ViolaExMachina {
                     _ => (),
                 }
                 next_event = context.next_event();
-            }
-            if send_note_off {
-                let _ = sender.send(Message::NoteOff);
             }
             let left;
             let right;
