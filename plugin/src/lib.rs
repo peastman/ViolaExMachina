@@ -277,6 +277,12 @@ impl Plugin for ViolaExMachina {
                     NoteEvent::MidiPitchBend { value, .. } => {
                         let _ = sender.send(Message::SetPitchBend {semitones: 4.0*(value-0.5)});
                     },
+                    NoteEvent::Choke { .. } => {
+                        let _ = sender.send(Message::AllNotesOff);
+                    },
+                    NoteEvent::VoiceTerminated { .. } => {
+                        let _ = sender.send(Message::AllNotesOff);
+                    }
                     _ => (),
                 }
                 next_event = context.next_event();

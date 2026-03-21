@@ -29,6 +29,7 @@ pub enum Message {
     Reinitialize {instrument_type: InstrumentType, instrument_count: usize},
     NoteOn {note_index: i32, velocity: f32},
     NoteOff {note_index: i32},
+    AllNotesOff,
     SetArticulation {articulation: Articulation},
     SetVolume {volume: f32},
     SetPitchBend {semitones: f32},
@@ -335,6 +336,11 @@ impl Director {
                         }
                         Message::NoteOff {note_index} => {
                             self.note_off(note_index);
+                        }
+                        Message::AllNotesOff => {
+                            for division in self.divisions.borrow_mut().iter_mut() {
+                                division.note_off(division.current_note, self)
+                            }
                         }
                         Message::SetVolume {volume} => {
                             self.volume = volume;
