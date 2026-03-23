@@ -106,6 +106,7 @@ pub struct Division {
     random: Random,
     steps_until_off: i32,
     current_note: i32,
+    current_note_articulation: Articulation,
     transitions: Vec<Transition>,
     instrument_delays: Vec<i64>,
     envelope: Vec<f32>,
@@ -261,8 +262,7 @@ impl Director {
         }
     }
 
-    /// End the current note.  Because this is a monophonic instrument, note_on() automatically
-    /// ends the current note as well.
+    /// End a current note.
     fn note_off(&mut self, note_index: i32) {
         for division in self.divisions.borrow_mut().iter_mut() {
             division.note_off(note_index, self)
@@ -425,6 +425,7 @@ impl Division {
             random: Random::new(),
             steps_until_off: 0,
             current_note: -1,
+            current_note_articulation: Articulation::Arco,
             transitions: vec![],
             instrument_delays: vec![],
             envelope: vec![],
@@ -540,16 +541,16 @@ impl Division {
                 }
             }
         }
+        self.current_note_articulation = director.articulation;
         Ok(())
     }
 
-    /// End the current note.  Because this is a monophonic instrument, note_on() automatically
-    /// ends the current note as well.
+    /// End the current note.
     fn note_off(&mut self, note_index: i32, director: &Director) {
         if note_index != self.current_note {
             return;
         }
-        match &director.articulation {
+        match &self.current_note_articulation {
             Articulation::Spiccato => {}
             Articulation::Pizzicato => {}
             _ => {
