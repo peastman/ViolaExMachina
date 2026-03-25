@@ -42,10 +42,10 @@ impl InstrumentType {
 
     pub fn highest_note(&self) -> i32 {
         match self {
-            InstrumentType::Violin => 91,
-            InstrumentType::Viola => 84,
-            InstrumentType::Cello => 72,
-            InstrumentType::Bass => 60
+            InstrumentType::Violin => 96,
+            InstrumentType::Viola => 88,
+            InstrumentType::Cello => 79,
+            InstrumentType::Bass => 67
         }
     }
 }

@@ -189,7 +189,7 @@ impl Director {
             }
             InstrumentType::Cello => {
                 self.bow_noise_scale = 0.6;
-                self.body_resonance = 0.35;
+                self.body_resonance = 0.22;
                 self.tremolo_length = 4000;
                 self.tremolo_space = 1000;
                 self.left_mute_filter = LowpassFilter::new(400.0);
@@ -197,7 +197,7 @@ impl Director {
             }
             InstrumentType::Bass => {
                 self.bow_noise_scale = 0.7;
-                self.body_resonance = 0.4;
+                self.body_resonance = 0.3;
                 self.tremolo_length = 4500;
                 self.tremolo_space = 1000;
                 self.left_mute_filter = LowpassFilter::new(200.0);
