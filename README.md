@@ -3,6 +3,9 @@
 Viola Ex Machina is an open source, physically inspired synthesizer for stringed instruments:
 violin, viola, cello, and bass, both solo instruments and ensembles.
 
+[Here are some examples](https://soundcloud.com/peter-eastman-195718857/sets/viola-ex-machina-demos)
+of music created with it, so you can hear what it sounds like.
+
 The sound produced by Viola Ex Machina is completely dry.  It models only the instruments, not
 the room they are in.  To get a realistic sound, it is essential that you add an appropriate
 reverb.
