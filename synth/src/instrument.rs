@@ -175,6 +175,11 @@ impl Instrument {
         if self.harmonics {
             c *= 2.0;
         }
+        if let Articulation::ColLegno {} = &self.last_articulation {
+            // Reduce the pitched part of the sound.
+
+            c *= 0.6;
+        }
         if self.bow_position != 0.5 {
             // For extreme bow positions, the volume should become quieter and more variable.
 
@@ -188,7 +193,7 @@ impl Instrument {
         }
         let volume = f32::min(1.0, self.volume);
         match &self.last_articulation {
-            Articulation::Pizzicato => {
+            Articulation::Pizzicato | Articulation::ColLegno => {
                 let x = (self.last_note-self.instrument_type.lowest_note()) as f32 / (self.instrument_type.highest_note()-self.instrument_type.lowest_note()) as f32;
                 let decay_target;
                 if x > 0.5 {

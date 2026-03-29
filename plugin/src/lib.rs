@@ -99,8 +99,23 @@ pub enum Articulation {
     Spiccato,
     #[id = "pizzicato"]
     Pizzicato,
+    #[id = "col_legno"]
+    ColLegno,
     #[id = "tremolo"]
     Tremolo
+}
+
+impl Articulation {
+    pub fn label(&self) -> String {
+        match self {
+            Articulation::Arco => String::from("Arco"),
+            Articulation::Marcato => String::from("Marcato"),
+            Articulation::Spiccato => String::from("Spiccato"),
+            Articulation::Pizzicato => String::from("Pizzicato"),
+            Articulation::ColLegno => String::from("Col Legno"),
+            Articulation::Tremolo => String::from("Tremolo")
+        }
+    }
 }
 
 impl Default for ViolaExMachina {
@@ -207,6 +222,7 @@ impl Plugin for ViolaExMachina {
                 Articulation::Marcato => synth::Articulation::Marcato,
                 Articulation::Spiccato => synth::Articulation::Spiccato,
                 Articulation::Pizzicato => synth::Articulation::Pizzicato,
+                Articulation::ColLegno => synth::Articulation::ColLegno,
                 Articulation::Tremolo => synth::Articulation::Tremolo
             };
             let _ = sender.send(Message::SetArticulation {articulation: articulation});
@@ -268,22 +284,22 @@ impl Plugin for ViolaExMachina {
                         // to allow legato playing.
 
                         new_notes.insert(note);
-                    },
+                    }
                     NoteEvent::NoteOff { note, .. } => {
                         if !new_notes.contains(&note) {
                             let _ = sender.send(Message::NoteOff {note_index: note as i32} );
                         }
-                    },
+                    }
                     NoteEvent::MidiPitchBend { value, .. } => {
                         let _ = sender.send(Message::SetPitchBend {semitones: 4.0*(value-0.5)});
-                    },
+                    }
                     NoteEvent::Choke { .. } => {
                         let _ = sender.send(Message::AllNotesOff);
-                    },
+                    }
                     NoteEvent::VoiceTerminated { .. } => {
                         let _ = sender.send(Message::AllNotesOff);
                     }
-                    _ => (),
+                    _ => ()
                 }
                 next_event = context.next_event();
             }

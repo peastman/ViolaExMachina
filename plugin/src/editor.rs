@@ -127,12 +127,11 @@ fn draw_controls_panel(ui: &mut egui::Ui, params: &Arc<ViolaExMachinaParams>, se
         ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
             ui.label("Articulation");
         });
-        egui::ComboBox::from_id_salt("Articulation").selected_text(format!("{:?}", new_articulation)).show_ui(ui, |ui| {
-            ui.selectable_value(&mut new_articulation, Articulation::Arco, "Arco");
-            ui.selectable_value(&mut new_articulation, Articulation::Marcato, "Marcato");
-            ui.selectable_value(&mut new_articulation, Articulation::Spiccato, "Spiccato");
-            ui.selectable_value(&mut new_articulation, Articulation::Pizzicato, "Pizzicato");
-            ui.selectable_value(&mut new_articulation, Articulation::Tremolo, "Tremolo");
+        egui::ComboBox::from_id_salt("Articulation").selected_text(new_articulation.label()).show_ui(ui, |ui| {
+            for articulation in [Articulation::Arco, Articulation::Marcato, Articulation::Spiccato,
+                                               Articulation::Pizzicato, Articulation::ColLegno, Articulation::Tremolo] {
+                ui.selectable_value(&mut new_articulation, articulation, articulation.label());
+            }
         });
         ui.end_row();
         if params.articulation.value() != new_articulation {
@@ -144,6 +143,7 @@ fn draw_controls_panel(ui: &mut egui::Ui, params: &Arc<ViolaExMachinaParams>, se
                 Articulation::Marcato => synth::Articulation::Marcato,
                 Articulation::Spiccato => synth::Articulation::Spiccato,
                 Articulation::Pizzicato => synth::Articulation::Pizzicato,
+                Articulation::ColLegno => synth::Articulation::ColLegno,
                 Articulation::Tremolo => synth::Articulation::Tremolo
             };
             let _ = sender.lock().unwrap().send(Message::SetArticulation {articulation: articulation});

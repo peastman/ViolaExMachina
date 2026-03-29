@@ -355,6 +355,7 @@ impl Director {
                                 Articulation::Marcato => true,
                                 Articulation::Spiccato => true,
                                 Articulation::Pizzicato => false,
+                                Articulation::ColLegno => true,
                                 Articulation::Tremolo => true
                             };
                         }
@@ -515,12 +516,12 @@ impl Division {
                 }
                 self.add_transition(0, 2000, director, TransitionData::FrequencyChange {start_frequency: start_frequency, end_frequency: end_frequency});
             }
-            Articulation::Pizzicato => {
+            Articulation::Pizzicato | Articulation::ColLegno => {
                 let peak = 1.0+15.0*velocity;
                 self.add_envelope_transition(0, peak, director);
                 let end_frequency = self.frequency[0];
                 let period = SAMPLE_RATE as f32/end_frequency;
-                let hold_time = (2.0*period) as i64;
+                let hold_time = i64::max(101, (2.0*period) as i64);
                 self.add_transition(hold_time, 0, director, TransitionData::EnvelopeChange {start_envelope: peak, end_envelope: 0.0});
 
                 // Plucking the string causes a momentary shift in pitch.
@@ -551,8 +552,7 @@ impl Division {
             return;
         }
         match &self.current_note_articulation {
-            Articulation::Spiccato => {}
-            Articulation::Pizzicato => {}
+            Articulation::Spiccato | Articulation::Pizzicato | Articulation::ColLegno => {}
             _ => {
                 let release_time = 1000 + (10000.0*(1.0-director.release_rate)) as i64;
                 self.add_envelope_transition(release_time, 0.0, director);
@@ -605,8 +605,17 @@ impl Division {
 
         let mut left = 0.0;
         let mut right = 0.0;
+        let noise_scale;
+        if let Articulation::ColLegno {} = &director.articulation {
+            // Always use maximum noise for col legno.
+
+            noise_scale = director.bow_noise_scale;
+        }
+        else {
+            noise_scale = director.bow_noise_scale*director.bow_noise;
+        }
         for i in 0..self.instruments.len() {
-            let mut noise = director.bow_noise_scale*director.bow_noise*self.instruments[i].get_volume()*director.noise_buffer[self.noise_position[i]];
+            let mut noise = noise_scale*self.instruments[i].get_volume()*director.noise_buffer[self.noise_position[i]];
             noise += 5e-5*self.frequency[i]*self.noise_filter[i].process(noise);
             let signal = self.instruments[i].generate(&mut director.fft_planner.borrow_mut()) + noise;
             self.noise_position[i] = (self.noise_position[i]+1)%director.noise_buffer.len();

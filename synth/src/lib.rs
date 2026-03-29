@@ -56,5 +56,6 @@ pub enum Articulation {
     Marcato,
     Spiccato,
     Pizzicato,
+    ColLegno,
     Tremolo
 }

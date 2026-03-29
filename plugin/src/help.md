@@ -28,6 +28,9 @@ articulations are supported.
   the volume of each note.
 - **Tremolo**.  The player moves the bow back and forth as quickly as possible to create a pulsing
   sound. 
+- **Col Legno**.  More precisely, *col legno battuto*.  The player uses the wood part of the bow
+  to strike the string creating a very short note.  The sound is similar to pizzicato but less
+  strongly pitched.  Key velocity controls the volume of each note.
 
 # Parameters
 
