@@ -22,15 +22,17 @@ articulations are supported.
 - **Marcato**.  Similar to arco, but with an accent at the beginning of each note.  Key velocity
   controls the strength of the accent.  This articulation works especially well for fast passages
   and for short, staccato notes.
+- **Glissando**.  Similar to arco, but when playing legato the pitch slides from one note to the
+  next.  Key velocity controls the transition speed.
 - **Spiccato**.  Very short notes created by bouncing the bow off the string.  Key velocity controls
   the volume of each note.
 - **Pizzicato**.  The player plucks the string with their finger.  Key velocity controls
   the volume of each note.
-- **Tremolo**.  The player moves the bow back and forth as quickly as possible to create a pulsing
-  sound. 
 - **Col Legno**.  More precisely, *col legno battuto*.  The player uses the wood part of the bow
   to strike the string creating a very short note.  The sound is similar to pizzicato but less
   strongly pitched.  Key velocity controls the volume of each note.
+- **Tremolo**.  The player moves the bow back and forth as quickly as possible to create a pulsing
+  sound.
 
 # Parameters
 

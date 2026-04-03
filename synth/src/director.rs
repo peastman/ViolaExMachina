@@ -353,6 +353,7 @@ impl Director {
                             self.apply_filter = match articulation {
                                 Articulation::Arco => true,
                                 Articulation::Marcato => true,
+                                Articulation::Glissando => true,
                                 Articulation::Spiccato => true,
                                 Articulation::Pizzicato => false,
                                 Articulation::ColLegno => true,
@@ -478,18 +479,35 @@ impl Division {
 
     /// Start playing a new note.
     fn note_on(&mut self, note_index: i32, velocity: f32, director: &Director) -> Result<(), String> {
-        self.current_note = note_index;
+        self.transitions.clear();
+        let current_freq = self.frequency[0];
         for i in 0..self.envelope.len() {
             let freq = 440.0 * f32::powf(2.0, (note_index-69) as f32/12.0);
             self.frequency[i] = freq;
             self.noise_filter[i] = ResonantFilter::new(2.0*freq, freq);
+        }
+        let mut slide = false;
+        if self.current_note != -1 && !director.polyphonic {
+            if let Articulation::Glissando {} = &director.articulation {
+                slide = true;
+            }
         }
         self.update_frequency(director);
         for instrument in &mut self.instruments {
             instrument.note_on(note_index, director.articulation);
         }
         match &director.articulation {
-            Articulation::Arco => {
+            Articulation::Arco | Articulation::Glissando => {
+                if slide {
+                    let interval = (self.current_note-note_index).abs().max(7) as i64;
+                    let slide_time = 200+(interval as f32*2000.0*(1.0-velocity)) as i64;
+                    let end_frequency = self.frequency[0];
+                    for i in 0..self.frequency.len() {
+                        self.frequency[i] = current_freq;
+                    }
+                    self.update_frequency(director);
+                    self.add_transition(0, slide_time, director, TransitionData::FrequencyChange {start_frequency: current_freq, end_frequency: end_frequency});
+                }
                 let attack_time = 1000+(30000.0*(1.0-velocity)) as i64;
                 let start_envelope = 0.5*self.envelope[0];
                 self.add_envelope_transition(0, start_envelope, director);
@@ -542,7 +560,9 @@ impl Division {
                 }
             }
         }
+        self.current_note = note_index;
         self.current_note_articulation = director.articulation;
+        self.update_transitions(director);
         Ok(())
     }
 

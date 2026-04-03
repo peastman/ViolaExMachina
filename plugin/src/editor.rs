@@ -128,7 +128,7 @@ fn draw_controls_panel(ui: &mut egui::Ui, params: &Arc<ViolaExMachinaParams>, se
             ui.label("Articulation");
         });
         egui::ComboBox::from_id_salt("Articulation").selected_text(new_articulation.label()).show_ui(ui, |ui| {
-            for articulation in [Articulation::Arco, Articulation::Marcato, Articulation::Spiccato,
+            for articulation in [Articulation::Arco, Articulation::Marcato, Articulation::Glissando, Articulation::Spiccato,
                                                Articulation::Pizzicato, Articulation::ColLegno, Articulation::Tremolo] {
                 ui.selectable_value(&mut new_articulation, articulation, articulation.label());
             }
@@ -141,6 +141,7 @@ fn draw_controls_panel(ui: &mut egui::Ui, params: &Arc<ViolaExMachinaParams>, se
             let articulation = match &new_articulation {
                 Articulation::Arco => synth::Articulation::Arco,
                 Articulation::Marcato => synth::Articulation::Marcato,
+                Articulation::Glissando => synth::Articulation::Glissando,
                 Articulation::Spiccato => synth::Articulation::Spiccato,
                 Articulation::Pizzicato => synth::Articulation::Pizzicato,
                 Articulation::ColLegno => synth::Articulation::ColLegno,

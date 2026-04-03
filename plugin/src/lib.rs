@@ -95,6 +95,8 @@ pub enum Articulation {
     Arco,
     #[id = "marcato"]
     Marcato,
+    #[id = "glissando"]
+    Glissando,
     #[id = "spiccato"]
     Spiccato,
     #[id = "pizzicato"]
@@ -110,6 +112,7 @@ impl Articulation {
         match self {
             Articulation::Arco => String::from("Arco"),
             Articulation::Marcato => String::from("Marcato"),
+            Articulation::Glissando => String::from("Glissando"),
             Articulation::Spiccato => String::from("Spiccato"),
             Articulation::Pizzicato => String::from("Pizzicato"),
             Articulation::ColLegno => String::from("Col Legno"),
@@ -220,6 +223,7 @@ impl Plugin for ViolaExMachina {
             let articulation = match &self.last_articulation {
                 Articulation::Arco => synth::Articulation::Arco,
                 Articulation::Marcato => synth::Articulation::Marcato,
+                Articulation::Glissando => synth::Articulation::Glissando,
                 Articulation::Spiccato => synth::Articulation::Spiccato,
                 Articulation::Pizzicato => synth::Articulation::Pizzicato,
                 Articulation::ColLegno => synth::Articulation::ColLegno,
