@@ -83,14 +83,14 @@ impl Instrument {
             InstrumentType::Cello => {
                 vibrato_low_frequency = 5.0;
                 vibrato_high_frequency = 5.5;
-                spectrum_coeff = (0.12175271, -0.27890300, 3.28620357, -7.92322202);
+                spectrum_coeff = (0.21012645, -0.44473545, 2.71075388, -6.53827176);
                 pizzicato_exponent = 30;
                 sample_rate = SAMPLE_RATE as f32;
             }
             InstrumentType::Bass => {
                 vibrato_low_frequency = 4.9;
                 vibrato_high_frequency = 5.4;
-                spectrum_coeff = (0.31336917, -0.99976244, 1.1930173, -4.76781326);
+                spectrum_coeff = (0.50323474, -1.61193245, 1.42970825, -4.19183609);
                 pizzicato_exponent = 40;
                 sample_rate = SAMPLE_RATE as f32;
             }
