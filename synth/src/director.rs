@@ -98,7 +98,7 @@ pub struct Director {
     message_receiver: mpsc::Receiver<Message>,
     pub stereo_width: f32,
     reverb: Vec<Reverb>,
-    pub noise_buffer: Vec<f32>,
+    pub noise_buffer: Vec<f32>
 }
 
 pub struct Division {
@@ -140,8 +140,8 @@ impl Director {
             steps_until_off: 0,
             max_instrument_delay: 2000,
             volume: 1.0,
-            tremolo_length: 3000,
-            tremolo_space: 1000,
+            tremolo_length: 4300,
+            tremolo_space: 200,
             bend: 1.0,
             vibrato: 0.4,
             bow_position: 0.5,
@@ -155,7 +155,7 @@ impl Director {
             message_receiver: message_receiver,
             stereo_width: 0.3,
             reverb: vec![],
-            noise_buffer: parse_flac(include_bytes!("data/bow_noise.flac")),
+            noise_buffer: parse_flac(include_bytes!("data/bow_noise.flac"))
         };
         for _ in 0..4 {
             result.divisions.borrow_mut().push(Division::new())
@@ -174,32 +174,28 @@ impl Director {
             InstrumentType::Violin => {
                 self.bow_noise_scale = 1.0;
                 self.body_resonance = 0.18;
-                self.tremolo_length = 3500;
-                self.tremolo_space = 1000;
+                self.tremolo_length = 4300;
                 self.left_mute_filter = LowpassFilter::new(1200.0);
                 self.right_mute_filter = LowpassFilter::new(1200.0);
             }
             InstrumentType::Viola => {
                 self.bow_noise_scale = 0.6;
                 self.body_resonance = 0.18;
-                self.tremolo_length = 3800;
-                self.tremolo_space = 1000;
+                self.tremolo_length = 4600;
                 self.left_mute_filter = LowpassFilter::new(800.0);
                 self.right_mute_filter = LowpassFilter::new(800.0);
             }
             InstrumentType::Cello => {
                 self.bow_noise_scale = 0.6;
                 self.body_resonance = 0.22;
-                self.tremolo_length = 4000;
-                self.tremolo_space = 1000;
+                self.tremolo_length = 4800;
                 self.left_mute_filter = LowpassFilter::new(400.0);
                 self.right_mute_filter = LowpassFilter::new(400.0);
             }
             InstrumentType::Bass => {
                 self.bow_noise_scale = 0.7;
                 self.body_resonance = 0.3;
-                self.tremolo_length = 4500;
-                self.tremolo_space = 1000;
+                self.tremolo_length = 5300;
                 self.left_mute_filter = LowpassFilter::new(200.0);
                 self.right_mute_filter = LowpassFilter::new(200.0);
             }
@@ -729,7 +725,7 @@ impl Division {
             if let Articulation::Tremolo {} = &director.articulation {
                 // When playing tremolo, the frequency needs to change continuously.
 
-                let freq_delta = 0.02*freq*director.volume;
+                let freq_delta = 0.01*freq*director.volume;
                 let low_freq = freq-0.5*freq_delta;
                 if director.step < self.tremolo_start[i] {
                     let x = (self.tremolo_start[i]-director.step) as f32 / director.tremolo_space as f32;
