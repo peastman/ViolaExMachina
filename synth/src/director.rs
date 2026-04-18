@@ -175,6 +175,7 @@ impl Director {
                 self.bow_noise_scale = 1.0;
                 self.body_resonance = 0.18;
                 self.tremolo_length = 4300;
+                self.tremolo_space = 200;
                 self.left_mute_filter = LowpassFilter::new(1200.0);
                 self.right_mute_filter = LowpassFilter::new(1200.0);
             }
@@ -182,20 +183,23 @@ impl Director {
                 self.bow_noise_scale = 0.6;
                 self.body_resonance = 0.18;
                 self.tremolo_length = 4600;
+                self.tremolo_space = 200;
                 self.left_mute_filter = LowpassFilter::new(800.0);
                 self.right_mute_filter = LowpassFilter::new(800.0);
             }
             InstrumentType::Cello => {
                 self.bow_noise_scale = 0.6;
                 self.body_resonance = 0.22;
-                self.tremolo_length = 4800;
+                self.tremolo_length = 4600;
+                self.tremolo_space = 400;
                 self.left_mute_filter = LowpassFilter::new(400.0);
                 self.right_mute_filter = LowpassFilter::new(400.0);
             }
             InstrumentType::Bass => {
-                self.bow_noise_scale = 0.7;
+                self.bow_noise_scale = 0.9;
                 self.body_resonance = 0.3;
-                self.tremolo_length = 5300;
+                self.tremolo_length = 4500;
+                self.tremolo_space = 1000;
                 self.left_mute_filter = LowpassFilter::new(200.0);
                 self.right_mute_filter = LowpassFilter::new(200.0);
             }
@@ -621,15 +625,11 @@ impl Division {
 
         let mut left = 0.0;
         let mut right = 0.0;
-        let noise_scale;
-        if let Articulation::ColLegno {} = &director.articulation {
-            // Always use maximum noise for col legno.
-
-            noise_scale = director.bow_noise_scale;
-        }
-        else {
-            noise_scale = director.bow_noise_scale*director.bow_noise;
-        }
+        let noise_scale = match &director.articulation {
+            Articulation::ColLegno => {director.bow_noise_scale}
+            Articulation::Tremolo => {1.5*director.bow_noise_scale*director.bow_noise}
+            _ => {director.bow_noise_scale*director.bow_noise}
+        };
         for i in 0..self.instruments.len() {
             let mut noise = noise_scale*self.instruments[i].get_volume()*director.noise_buffer[self.noise_position[i]];
             noise += 5e-5*self.frequency[i]*self.noise_filter[i].process(noise);
@@ -694,7 +694,7 @@ impl Division {
 
                 if director.step > self.tremolo_end[i] {
                     vol = 0.0;
-                    self.tremolo_volume[i] = 1.0 + self.random.get_uniform();
+                    self.tremolo_volume[i] = 1.0 + 0.5*self.random.get_uniform();
                     if !self.tremolo_down_bow[i] {
                         self.tremolo_volume[i] *= 0.9;
                         self.tremolo_start[i] = director.step+(0.8*director.tremolo_space as f32) as i64;
@@ -702,7 +702,7 @@ impl Division {
                     else {
                         self.tremolo_start[i] = director.step+director.tremolo_space;
                     }
-                    self.tremolo_end[i] = self.tremolo_start[i] + director.tremolo_length + self.random.get_int() as i64 % 500;
+                    self.tremolo_end[i] = self.tremolo_start[i] + director.tremolo_length + (1000.0*director.volume) as i64 + self.random.get_int() as i64 % 500;
                     self.tremolo_down_bow[i] = !self.tremolo_down_bow[i];
                 }
                 else if director.step < self.tremolo_start[i] {
@@ -710,7 +710,7 @@ impl Division {
                 }
                 else {
                     let x = (director.step-self.tremolo_start[i]) as f32 / (self.tremolo_end[i]-self.tremolo_start[i]) as f32;
-                    vol *= self.tremolo_volume[i]*3.0*(x-x*x);
+                    vol *= self.tremolo_volume[i]*3.0*(x-x*x).sqrt();
                 }
             }
             self.instruments[i].set_volume(vol);
