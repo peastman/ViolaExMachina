@@ -30,6 +30,7 @@ pub struct Instrument {
     volume: f32,
     frequency: f32,
     bow_position: f32,
+    phase_shift: f32,
     harmonics: bool,
     vibrato_low_frequency: f32,
     vibrato_high_frequency: f32,
@@ -65,6 +66,7 @@ impl Instrument {
         let spectrum_coeff;
         let pizzicato_exponent;
         let sample_rate;
+        let phase_shift: f32;
         match instrument_type {
             InstrumentType::Violin => {
                 vibrato_low_frequency = 5.15;
@@ -72,6 +74,7 @@ impl Instrument {
                 spectrum_coeff = (0.23477698, -0.61536557, 1.79446171, -4.53092934);
                 pizzicato_exponent = 20;
                 sample_rate = 2.0*SAMPLE_RATE as f32;
+                phase_shift = 0.65;
             }
             InstrumentType::Viola => {
                 vibrato_low_frequency = 5.15;
@@ -79,6 +82,7 @@ impl Instrument {
                 spectrum_coeff = (0.71382589, -2.82709236, 1.52126997, -4.04880334);
                 pizzicato_exponent = 20;
                 sample_rate = SAMPLE_RATE as f32;
+                phase_shift = 0.35;
             }
             InstrumentType::Cello => {
                 vibrato_low_frequency = 5.0;
@@ -86,6 +90,7 @@ impl Instrument {
                 spectrum_coeff = (0.21012645, -0.44473545, 2.71075388, -6.53827176);
                 pizzicato_exponent = 30;
                 sample_rate = SAMPLE_RATE as f32;
+                phase_shift = 0.0;
             }
             InstrumentType::Bass => {
                 vibrato_low_frequency = 4.9;
@@ -93,6 +98,7 @@ impl Instrument {
                 spectrum_coeff = (0.50323474, -1.61193245, 1.42970825, -4.19183609);
                 pizzicato_exponent = 40;
                 sample_rate = SAMPLE_RATE as f32;
+                phase_shift = 0.0;
             }
         }
         let mut random = Random::new();
@@ -102,6 +108,7 @@ impl Instrument {
             volume: 1.0,
             frequency: 440.0,
             bow_position: 0.5,
+            phase_shift: phase_shift,
             harmonics: false,
             vibrato_low_frequency: vibrato_low_frequency,
             vibrato_high_frequency: vibrato_high_frequency,
@@ -159,6 +166,7 @@ impl Instrument {
     pub fn set_bow_position(&mut self, bow_position: f32) {
         self.bow_position = bow_position;
     }
+
     /// Set the amplitude of vibrato.
     pub fn set_vibrato_amplitude(&mut self, amplitude: f32) {
         self.vibrato_amplitude = amplitude;
@@ -248,6 +256,15 @@ impl Instrument {
 
     /// Apply the filter to the spectrum buffer to damp the sound.
     fn apply_filter(&mut self) {
+        if self.phase_shift != 0.0 {
+            // Gradually shifting the phases of high frequencies helps to reduce artifacts.
+            // I'm not entirely sure why!  I think it's related to the body resonance.
+
+            for i in 1..self.spectrum_size {
+                let phase = self.phase_shift*i as f32/self.spectrum_size as f32;
+                self.spectrum_buffer[i] *= Complex::<f32>::new(phase.cos(), phase.sin());
+            }
+        }
         let s = if self.volume == 0.0 {0.2} else {0.15}; // Make the sound decay faster after the end of the note.
         for i in 1..self.spectrum_size {
             let f = i as f32/self.spectrum_size as f32;
