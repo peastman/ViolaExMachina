@@ -74,8 +74,6 @@ pub struct Director {
     pub articulation: Articulation,
     pub random: Random,
     pub fft_planner: RefCell<RealFftPlanner::<f32>>,
-    left_filter: LowpassFilter,
-    right_filter: LowpassFilter,
     left_mute_filter: LowpassFilter,
     right_mute_filter: LowpassFilter,
     apply_filter: bool,
@@ -131,8 +129,6 @@ impl Director {
             articulation: Articulation::Arco,
             random: Random::new(),
             fft_planner: RefCell::new(RealFftPlanner::<f32>::new()),
-            left_filter: LowpassFilter::new(6500.0),
-            right_filter: LowpassFilter::new(6500.0),
             left_mute_filter: LowpassFilter::new(1200.0),
             right_mute_filter: LowpassFilter::new(1200.0),
             apply_filter: true,
@@ -294,10 +290,6 @@ impl Director {
             let (div_left, div_right) = division.generate(self);
             left += div_left;
             right += div_right;
-        }
-        if self.apply_filter {
-            left = self.left_filter.process(left);
-            right = self.right_filter.process(right);
         }
         let mut left_resonance = self.body_resonance*self.reverb[0].process(left);
         if self.mute {

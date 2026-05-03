@@ -16,6 +16,7 @@
 use std::f32::consts::PI;
 use std::sync::Arc;
 use crate::random::Random;
+use crate::filter::{Filter, LowpassFilter};
 use crate::{InstrumentType, Articulation};
 use crate::SAMPLE_RATE;
 use realfft::{RealFftPlanner, ComplexToReal};
@@ -53,6 +54,7 @@ pub struct Instrument {
     period: f32,
     period_offset: f32,
     random: Random,
+    lowpass: LowpassFilter,
     decaying_notes: Vec<DecayingNote>,
     start_new_note: bool,
     last_note: i32,
@@ -131,6 +133,7 @@ impl Instrument {
             period: 0.0,
             period_offset: 0.0,
             random: random,
+            lowpass: LowpassFilter::new(5000.0),
             decaying_notes: vec![],
             start_new_note: false,
             last_note: 0,
@@ -145,6 +148,7 @@ impl Instrument {
             self.last_note = note;
         }
         self.last_articulation = articulation;
+        self.update_filter();
     }
 
     /// Get the volume of the excitation from the bow (between 0.0 and 1.0).
@@ -175,6 +179,15 @@ impl Instrument {
     /// Set whether harmonics are enabled.
     pub fn set_harmonics(&mut self, harmonics: bool) {
         self.harmonics = harmonics;
+        self.update_filter();
+    }
+
+    /// Update the cutoff frequency of the lowpass filter.
+    fn update_filter(&mut self) {
+        let note_freq = 440.0 * f32::powf(2.0, (self.last_note-69) as f32/12.0);
+        let multiplier = if self.harmonics {4.0} else {1.0};
+        let cutoff = f32::min(12.0*note_freq*multiplier, 20000.0);
+        self.lowpass.set_cutoff(cutoff);
     }
 
     /// Add excitation from the bow to the spectrum.
@@ -392,6 +405,7 @@ impl Instrument {
         // Return output from the buffer.
 
         result += self.output_buffer[self.output_position];
+        result = self.lowpass.process(result);
         self.output_position += 1;
         return result;
     }

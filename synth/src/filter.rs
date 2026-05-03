@@ -41,6 +41,12 @@ impl LowpassFilter {
     pub fn reset(&mut self) {
         self.y = 0.0;
     }
+
+    pub fn set_cutoff(&mut self, cutoff: f32) {
+        let rc = 1.0/(2.0*PI*cutoff);
+        let dt = 1.0/SAMPLE_RATE as f32;
+        self.alpha = dt/(rc+dt);
+    }
 }
 
 impl Filter for LowpassFilter {
