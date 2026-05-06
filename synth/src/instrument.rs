@@ -73,7 +73,7 @@ impl Instrument {
             InstrumentType::Violin => {
                 vibrato_low_frequency = 5.15;
                 vibrato_high_frequency = 5.4;
-                spectrum_coeff = (0.23477698, -0.61536557, 1.79446171, -4.53092934);
+                spectrum_coeff = (0.18917376, 0.0050823237, 1.3494484, -2.9302601);
                 pizzicato_exponent = 20;
                 sample_rate = 2.0*SAMPLE_RATE as f32;
                 phase_shift = 0.65;
@@ -81,7 +81,7 @@ impl Instrument {
             InstrumentType::Viola => {
                 vibrato_low_frequency = 5.15;
                 vibrato_high_frequency = 5.4;
-                spectrum_coeff = (0.71382589, -2.82709236, 1.52126997, -4.04880334);
+                spectrum_coeff = (0.59566957, -2.227358, 0.96543276, -2.170609);
                 pizzicato_exponent = 20;
                 sample_rate = SAMPLE_RATE as f32;
                 phase_shift = 0.35;
@@ -89,7 +89,7 @@ impl Instrument {
             InstrumentType::Cello => {
                 vibrato_low_frequency = 5.0;
                 vibrato_high_frequency = 5.5;
-                spectrum_coeff = (0.21012645, -0.44473545, 2.71075388, -6.53827176);
+                spectrum_coeff = (-0.0037527911, 0.55326806, 2.1803675, -4.7307866);
                 pizzicato_exponent = 30;
                 sample_rate = SAMPLE_RATE as f32;
                 phase_shift = 0.0;
@@ -97,7 +97,7 @@ impl Instrument {
             InstrumentType::Bass => {
                 vibrato_low_frequency = 4.9;
                 vibrato_high_frequency = 5.4;
-                spectrum_coeff = (0.50323474, -1.61193245, 1.42970825, -4.19183609);
+                spectrum_coeff = (0.34754488, -0.852053, 1.0190364, -2.5493735);
                 pizzicato_exponent = 40;
                 sample_rate = SAMPLE_RATE as f32;
                 phase_shift = 0.0;
