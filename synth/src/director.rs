@@ -170,7 +170,7 @@ impl Director {
             InstrumentType::Violin => {
                 self.bow_noise_scale = 1.0;
                 self.body_resonance = 0.18;
-                self.tremolo_length = 4300;
+                self.tremolo_length = 4100;
                 self.tremolo_space = 200;
                 self.left_mute_filter = LowpassFilter::new(1200.0);
                 self.right_mute_filter = LowpassFilter::new(1200.0);
@@ -547,7 +547,7 @@ impl Division {
                 for i in 0..self.tremolo_start.len() {
                     self.tremolo_start[i] = director.step;
                     self.tremolo_end[i] = director.step + director.tremolo_length + self.random.get_int() as i64%500;
-                    self.tremolo_volume[i] = 1.0 + self.random.get_uniform();
+                    self.tremolo_volume[i] = 1.0 + 0.5*self.random.get_uniform();
                     self.tremolo_down_bow[i] = true;
                 }
             }
@@ -686,15 +686,14 @@ impl Division {
 
                 if director.step > self.tremolo_end[i] {
                     vol = 0.0;
-                    self.tremolo_volume[i] = 1.0 + 0.5*self.random.get_uniform();
+                    self.tremolo_volume[i] = 0.5*(self.tremolo_volume[i] + 1.0 + 0.5*self.random.get_uniform());
                     if !self.tremolo_down_bow[i] {
-                        self.tremolo_volume[i] *= 0.9;
                         self.tremolo_start[i] = director.step+(0.8*director.tremolo_space as f32) as i64;
                     }
                     else {
                         self.tremolo_start[i] = director.step+director.tremolo_space;
                     }
-                    self.tremolo_end[i] = self.tremolo_start[i] + director.tremolo_length + (1000.0*director.volume) as i64 + self.random.get_int() as i64 % 500;
+                    self.tremolo_end[i] = self.tremolo_start[i] + director.tremolo_length + (800.0*director.volume) as i64 + self.random.get_int() as i64 % 500;
                     self.tremolo_down_bow[i] = !self.tremolo_down_bow[i];
                 }
                 else if director.step < self.tremolo_start[i] {
@@ -702,7 +701,7 @@ impl Division {
                 }
                 else {
                     let x = (director.step-self.tremolo_start[i]) as f32 / (self.tremolo_end[i]-self.tremolo_start[i]) as f32;
-                    vol *= self.tremolo_volume[i]*3.0*(x-x*x).sqrt();
+                    vol *= self.tremolo_volume[i]*3.0*(x-x*x)*(if self.tremolo_down_bow[i] {1.0} else {0.8});
                 }
             }
             self.instruments[i].set_volume(vol);
@@ -717,7 +716,7 @@ impl Division {
             if let Articulation::Tremolo {} = &director.articulation {
                 // When playing tremolo, the frequency needs to change continuously.
 
-                let freq_delta = 0.01*freq*director.volume;
+                let freq_delta = 0.014*freq*director.volume;
                 let low_freq = freq-0.5*freq_delta;
                 if director.step < self.tremolo_start[i] {
                     let x = (self.tremolo_start[i]-director.step) as f32 / director.tremolo_space as f32;

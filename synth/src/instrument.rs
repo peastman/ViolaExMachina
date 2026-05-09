@@ -186,7 +186,7 @@ impl Instrument {
     fn update_filter(&mut self) {
         let note_freq = 440.0 * f32::powf(2.0, (self.last_note-69) as f32/12.0);
         let multiplier = if self.harmonics {4.0} else {1.0};
-        let cutoff = f32::min(12.0*note_freq*multiplier, 20000.0);
+        let cutoff = f32::min(12.0*note_freq*multiplier, 20000.0)*(SAMPLE_RATE as f32/self.sample_rate);
         self.lowpass.set_cutoff(cutoff);
     }
 
