@@ -247,17 +247,20 @@ impl Instrument {
                     else {
                         decay = 1.0-decay_target*(1.0-x)/0.8;
                     }
-                    if self.bow_position > 0.5 {
+                    if self.bow_position >= 0.5 {
                         // For sul tasto, reduce the high frequencies.
 
                         decay *= (-18.0*x*(self.bow_position-0.5)).exp();
+                        if i == 1 {
+                            decay *= 2.0;
+                        }
                     }
                     else if self.bow_position < 0.5 {
                         // For sul ponticello, increase the high frequencies and reduce the fundamental.
 
                         decay *= (10.0*(x-0.5)*(x-0.5)*(0.5-self.bow_position)).exp();
                         if i == 1 {
-                            decay *= 0.05+1.9*self.bow_position;
+                            decay *= 0.05+3.9*self.bow_position;
                         }
                     }
                     let scale = c*decay*f32::min(y1, y2);
