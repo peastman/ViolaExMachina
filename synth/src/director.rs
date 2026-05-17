@@ -57,7 +57,8 @@ struct Transition {
 /// changing, and what values it is changing between.
 enum TransitionData {
     EnvelopeChange {start_envelope: f32, end_envelope: f32},
-    FrequencyChange {start_frequency: f32, end_frequency: f32}
+    FrequencyChange {start_frequency: f32, end_frequency: f32},
+    BowPositionChange {start_shift: f32, end_shift: f32}
 }
 
 /// This is the main class you interact with when synthesizing audio.  A Director controls a set
@@ -116,6 +117,7 @@ pub struct Division {
     envelope_after_transitions: f32,
     frequency_after_transitions: f32,
     instrument_pan: Vec<f32>,
+    bow_position_shift: Vec<f32>,
     noise_position: Vec<usize>,
     noise_filter: Vec<ResonantFilter>
 }
@@ -431,6 +433,7 @@ impl Division {
             envelope_after_transitions: 0.0,
             frequency_after_transitions: 0.0,
             instrument_pan: vec![],
+            bow_position_shift: vec![],
             noise_position: vec![],
             noise_filter: vec![]
         }
@@ -447,6 +450,7 @@ impl Division {
         self.transitions.clear();
         self.instrument_delays = vec![0; instrument_count];
         self.instrument_pan = vec![0.0; instrument_count];
+        self.bow_position_shift = vec![0.0; instrument_count];
         self.envelope = vec![0.0; instrument_count];
         self.frequency = vec![440.0; instrument_count];
         self.tremolo_start = vec![0; instrument_count];
@@ -478,8 +482,9 @@ impl Division {
             self.frequency[i] = freq;
             self.noise_filter[i] = ResonantFilter::new(2.0*freq, freq);
         }
+        let legato = self.current_note != -1 && !director.polyphonic;
         let mut slide = false;
-        if self.current_note != -1 && !director.polyphonic {
+        if legato {
             if let Articulation::Glissando {} = &director.articulation {
                 slide = true;
             }
@@ -504,12 +509,18 @@ impl Division {
                 let start_envelope = 0.5*self.envelope[0];
                 self.add_envelope_transition(0, start_envelope, director);
                 self.add_transition(0, attack_time, director, TransitionData::EnvelopeChange {start_envelope: start_envelope, end_envelope: 1.0});
+                if !legato {
+                    self.add_transition(0, 10000, director, TransitionData::BowPositionChange { start_shift: -director.bow_position, end_shift: 0.0 });
+                }
             }
             Articulation::Marcato => {
                 let attack_time = 1000+(5000.0*(1.0-velocity)) as i64;
                 let peak = 1.0+3.0*velocity;
                 self.add_envelope_transition(attack_time, peak, director);
                 self.add_transition(attack_time, 2*attack_time, director, TransitionData::EnvelopeChange {start_envelope: peak, end_envelope: 1.0});
+                if !legato {
+                    self.add_transition(0, 10000, director, TransitionData::BowPositionChange { start_shift: -director.bow_position, end_shift: 0.0 });
+                }
             }
             Articulation::Spiccato => {
                 let hold_time = 2750+(self.random.get_int()%500) as i64;
@@ -583,6 +594,8 @@ impl Division {
             TransitionData::FrequencyChange {start_frequency: _, end_frequency} => {
                 self.frequency_after_transitions = *end_frequency;
             }
+            TransitionData::BowPositionChange {start_shift: _, end_shift: _} => {
+            }
         }
         self.transitions.push(transition);
     }
@@ -641,6 +654,7 @@ impl Division {
     fn update_transitions(&mut self, director: &Director) {
         let mut volume_changed = false;
         let mut frequency_changed = false;
+        let mut bow_position_changed = false;
         for transition in &self.transitions {
             for i in 0..self.instruments.len() {
                 let j = director.step-self.instrument_delays[i];
@@ -657,6 +671,10 @@ impl Division {
                             self.frequency[i] = weight1*start_frequency + weight2*end_frequency;
                             frequency_changed = true;
                         }
+                        TransitionData::BowPositionChange {start_shift, end_shift} => {
+                            self.bow_position_shift[i] = weight1*start_shift + weight2*end_shift;
+                            bow_position_changed = true;
+                        }
                     }
                 }
             }
@@ -664,6 +682,7 @@ impl Division {
         if let Articulation::Tremolo {} = &director.articulation {
             volume_changed = true;
             frequency_changed = true;
+            bow_position_changed = true;
         }
         if volume_changed {
             self.update_volume(director);
@@ -671,6 +690,9 @@ impl Division {
         }
         if frequency_changed {
             self.update_frequency(director);
+        }
+        if bow_position_changed {
+            self.update_bow_position(director);
         }
         self.transitions.retain(|t| director.step < t.end+director.max_instrument_delay);
     }
@@ -734,7 +756,16 @@ impl Division {
     /// Update the bow position of all Instruments.  This is called whenever the Director's bow position is changed.
     fn update_bow_position(&mut self, director: &Director) {
         for i in 0..self.instruments.len() {
-            self.instruments[i].set_bow_position(director.bow_position);
+            let mut pos = f32::max(0.0, director.bow_position+self.bow_position_shift[i]);
+            if let Articulation::Tremolo {} = &director.articulation {
+                // When playing tremolo, the bow position needs to change continuously.
+
+                if director.step > self.tremolo_start[i] && self.tremolo_down_bow[i] {
+                    let x = (director.step-self.tremolo_start[i]) as f32 / (self.tremolo_end[i]-self.tremolo_start[i]) as f32;
+                    pos *= x;
+                }
+            }
+            self.instruments[i].set_bow_position(pos);
         }
     }
     /// Update the vibrato of all Instruments.  This is called whenever the Director's vibrato is changed.
